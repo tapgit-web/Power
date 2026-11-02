@@ -23,11 +23,11 @@ const Header = () => {
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-300 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 sm:h-3 sm:w-3 bg-white"></span>
                     </span>
-                    <Link to="/home" className="flex items-center bg-white hover:bg-slate-50 px-2.5 sm:px-3 py-1 rounded-lg sm:rounded-xl shadow-sm border border-emerald-900/10 transition-all duration-300 select-none group active:scale-95" title="THE MONITOR">
+                    <Link to="/home" className="flex items-center select-none group py-0.5 active:scale-95 transition-transform" title="THE MONITOR">
                         <img 
-                            src="/the-monitor-logo.png" 
+                            src="/the-monitor-white-transparent.png" 
                             alt="THE MONITOR" 
-                            className="h-6 sm:h-7 md:h-8 w-auto object-contain"
+                            className="h-7 sm:h-8 md:h-9 w-auto object-contain drop-shadow-sm transition-all group-hover:brightness-110"
                         />
                     </Link>
                 </div>
