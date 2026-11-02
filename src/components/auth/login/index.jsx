@@ -1,8 +1,7 @@
-import React, { useState,useEffect } from 'react'
-import { Navigate, Link } from 'react-router-dom'
-import { doSignInWithEmailAndPassword, doSignInWithGoogle } from '../../../firebase/auth'
+import React, { useState, useEffect } from 'react'
+import { Navigate } from 'react-router-dom'
+import { doSignInWithEmailAndPassword, doSignOut } from '../../../firebase/auth'
 import { useAuth } from '../../../contexts/authContext'
-import { doSignOut } from '../../../firebase/auth'   //use to auto singout
 
 const Login = () => {
     const { userLoggedIn } = useAuth()
@@ -44,18 +43,6 @@ const Login = () => {
                 }
                 setIsSigningIn(false)
             }
-        }
-    }
-
-    const onGoogleSignIn = (e) => {
-        e.preventDefault()
-        setErrorMessage('')
-        if (!isSigningIn) {
-            setIsSigningIn(true)
-            doSignInWithGoogle().catch(err => {
-                setErrorMessage(err.message || 'Google sign-in failed.')
-                setIsSigningIn(false)
-            })
         }
     }
 
