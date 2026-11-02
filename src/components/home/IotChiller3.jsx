@@ -340,17 +340,6 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
                     </div>
                   </div>
                 </div>
-
-                {/* 4. Footer Status Bar */}
-                <div className="mt-3.5 sm:mt-5 pt-2.5 sm:pt-3.5 border-t border-slate-100 flex items-center justify-between text-[11px] sm:text-xs text-slate-600">
-                  <div className="flex items-center gap-1.5 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-                    <span>Grid Status: <strong className="text-emerald-700 font-semibold">Normal (50 Hz)</strong></span>
-                  </div>
-                  <span className="text-[10px] sm:text-[11px] text-slate-400 font-medium shrink-0">
-                    Modbus Telemetry
-                  </span>
-                </div>
               </div>
             );
           })}
