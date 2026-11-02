@@ -2,14 +2,14 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyBgc-qS0x3qeuQMV22GxmpJlNH5X5L3tMk",
-    authDomain: "taprw-c7977.firebaseapp.com",
-    databaseURL: "https://taprw-c7977-default-rtdb.firebaseio.com",
-    projectId: "taprw-c7977",
-    storageBucket: "taprw-c7977.firebasestorage.app",
-    messagingSenderId: "1094519464495",
-    appId: "1:1094519464495:web:644cc3c8c323cefa501cda",
-    measurementId: "G-2GVMBDE7X7"
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+    databaseURL: process.env.REACT_APP_FIREBASE_DATABASE_URL,
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
   };
 
  const app = initializeApp(firebaseConfig);
@@ -17,7 +17,8 @@ const firebaseConfig = {
 
 
 
- export default { app, auth };
- export  { app, auth };
+const firebaseServices = { app, auth };
+export default firebaseServices;
+export { app, auth };
 
 
