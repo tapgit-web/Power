@@ -1,0 +1,230 @@
+.MainCon {
+    background-color: #ffffff;
+    padding: 40px 50px;
+    height: auto;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+    margin: 0 auto 0px auto;
+}
+
+.MainCon1 {
+    background-color: #ffffff;
+    padding: 25px;
+    height: auto;
+    margin-top: 0px;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+
+    margin: 0px auto 0 auto;
+}
+
+/* Modernized Sleek Table Styles */
+.Mtable {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #1e293b;
+    margin: 16px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.Mtable1 {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #1e293b;
+    margin: 16px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.Mtable tr,
+.Mtable td,
+.Mtable th {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    border-right: 1px solid rgba(0, 0, 0, 0.1);
+    text-align: center;
+    font-size: 14px;
+}
+
+.Mtable1 tr,
+.Mtable1 td,
+.Mtable1 th {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    border-right: 1px solid rgba(0, 0, 0, 0.1);
+    text-align: center;
+    font-size: 14px;
+}
+
+/* Remove last cell border-right for clean look */
+.Mtable tr th:last-child,
+.Mtable tr td:last-child,
+.Mtable1 tr th:last-child,
+.Mtable1 tr td:last-child {
+    border-right: none;
+}
+
+.Mtable tr:last-child td,
+.Mtable1 tr:last-child td {
+    border-bottom: none;
+}
+
+.Mtable th,
+.Mtable1 th {
+    background: linear-gradient(90deg, #065f46 0%, #047857 50%, #15803d 100%);
+    color: #ffffff;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+}
+
+.Mtable tbody tr:nth-child(even) {
+    background-color: rgba(4, 54, 26, 0.05);
+}
+
+/* Modern write container card */
+.writ1 {
+    width: 70%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-start;
+    padding: 24px;
+    background-color: #f8f8f8;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 12px;
+    margin: 0 auto 24px auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.writ1:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+h3 {
+    color: #0f172a;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    letter-spacing: -0.01em;
+    text-align: center;
+}
+
+/* Modern dropdown wrapper */
+.write-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background-color: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.write-item:hover {
+    border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);
+}
+
+.write-item strong {
+    font-weight: 600;
+    color: #334155;
+    font-size: 13px;
+}
+
+.write-item select {
+    padding: 6px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background-color: #ffffff;
+    color: #1e293b;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.write-item select:focus {
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+
+/* Premium table scroll wrapper */
+.table-container {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+/* Custom premium scrollbar styling */
+.table-container::-webkit-scrollbar {
+    height: 6px;
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 8px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 8px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Mobile responsive fixes */
+@media only screen and (min-width: 320px) and (max-width: 480px) {
+    .MainCon {
+        background-color: #ffffff;
+        padding: 16px;
+        height: auto;
+    }
+
+    .Mtable,
+    .Mtable1 {
+        width: 100%;
+        border-collapse: separate;
+        margin: 12px 0;
+    }
+
+    .Mtable tr,
+    .Mtable td,
+    .Mtable th {
+        font-size: 13px;
+        padding: 8px 10px;
+    }
+
+    .Mtable1 tr,
+    .Mtable1 td,
+    .Mtable1 th {
+        font-size: 10px;
+        padding: 6px 8px;
+    }
+
+    .writ1 {
+        width: 98%;
+        padding: 16px;
+        gap: 12px;
+        margin-bottom: 20px;
+        margin-left: 0;
+    }
+}
