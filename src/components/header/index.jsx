@@ -24,7 +24,7 @@ const Header = () => {
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 sm:h-3 sm:w-3 bg-white"></span>
                     </span>
                     <Link to="/home" className="text-white hover:text-green-100 font-brand font-black text-base sm:text-xl md:text-2xl tracking-wider select-none transition-colors duration-300">
-                        POWERSENSE
+                        MONITOR
                     </Link>
                 </div>
 
