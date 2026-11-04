@@ -84,6 +84,12 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
             obj.y !== undefined ||
             obj.B !== undefined ||
             obj.b !== undefined ||
+            obj.BR !== undefined ||
+            obj.RY !== undefined ||
+            obj.YB !== undefined ||
+            obj.I1 !== undefined ||
+            obj.I2 !== undefined ||
+            obj.I3 !== undefined ||
             obj.V1 !== undefined ||
             obj.v1 !== undefined ||
             obj.V_0 !== undefined ||
@@ -164,9 +170,13 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
             const frequency =
               values?.Frequency ?? values?.frequency ?? values?.freq ?? values?.Freq ?? null;
 
-            const ry = values?.RY ?? values?.ry ?? null;
-            const yb = values?.YB ?? values?.yb ?? null;
-            const br = values?.BR ?? values?.br ?? null;
+            const ry = values?.RY ?? values?.ry ?? values?.Ry ?? null;
+            const yb = values?.YB ?? values?.yb ?? values?.Yb ?? null;
+            const br = values?.BR ?? values?.br ?? values?.Br ?? null;
+
+            const i1 = values?.I1 ?? values?.i1 ?? values?.I_1 ?? null;
+            const i2 = values?.I2 ?? values?.i2 ?? values?.I_2 ?? null;
+            const i3 = values?.I3 ?? values?.i3 ?? values?.I_3 ?? null;
 
             return {
               ts,
@@ -178,6 +188,9 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
               ry,
               yb,
               br,
+              i1,
+              i2,
+              i3,
             };
           })
           .filter(Boolean);
@@ -261,10 +274,20 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
               machineNames[machineNumber] ||
               `Machine ${machineNumber}`;
 
-            const v1Val = latestRecord?.v1 != null ? Number(latestRecord.v1).toFixed(1) : null;
-            const v2Val = latestRecord?.v2 != null ? Number(latestRecord.v2).toFixed(1) : null;
-            const v3Val = latestRecord?.v3 != null ? Number(latestRecord.v3).toFixed(1) : null;
+            const v1Val = latestRecord?.v1 != null ? Number(latestRecord.v1).toFixed(2) : null;
+            const v2Val = latestRecord?.v2 != null ? Number(latestRecord.v2).toFixed(2) : null;
+            const v3Val = latestRecord?.v3 != null ? Number(latestRecord.v3).toFixed(2) : null;
+
+            const ryVal = latestRecord?.ry != null ? Number(latestRecord.ry).toFixed(2) : null;
+            const ybVal = latestRecord?.yb != null ? Number(latestRecord.yb).toFixed(2) : null;
+            const brVal = latestRecord?.br != null ? Number(latestRecord.br).toFixed(2) : null;
+
+            const i1Val = latestRecord?.i1 != null ? Number(latestRecord.i1).toFixed(2) : null;
+            const i2Val = latestRecord?.i2 != null ? Number(latestRecord.i2).toFixed(2) : null;
+            const i3Val = latestRecord?.i3 != null ? Number(latestRecord.i3).toFixed(2) : null;
+
             const kwhVal = latestRecord?.kwh != null ? Number(latestRecord.kwh).toFixed(2) : null;
+            const freqVal = latestRecord?.frequency != null ? Number(latestRecord.frequency).toFixed(2) : null;
 
             // Calculate average voltage
             const voltages = [v1Val, v2Val, v3Val].filter((v) => v !== null).map(Number);
@@ -313,103 +336,262 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
                   </div>
                 </div>
 
-                {/* 2. Hero Energy Card (KWH) */}
-                <div className="my-3.5 sm:my-5 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-950 text-white shadow-md relative overflow-hidden">
-                  {/* Subtle Background Glow */}
+                {/* 2. Hero Energy Card (1. KWH & 2. Frequency) */}
+                <div className="my-3 sm:my-4 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-950 text-white shadow-md relative overflow-hidden">
                   <div className="absolute -right-8 -bottom-8 w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-emerald-500/20 blur-2xl pointer-events-none"></div>
 
-                  <div className="flex items-center justify-between relative z-10 gap-2">
-                    <div className="flex items-center gap-2.5 sm:gap-3">
-                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center text-emerald-400 shadow-inner border border-white/10 shrink-0">
-                        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div>
-                        <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-                          Total Energy
+                  <div className="grid grid-cols-2 gap-3 relative z-10">
+                    {/* 1. Address: KWH */}
+                    <div className="flex flex-col justify-between pr-2 sm:pr-3 border-r border-white/10">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[9px] sm:text-[10px] font-mono font-black px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-300 border border-emerald-400/30">
+                          KWH
                         </span>
-                        <h4 className="text-[11px] sm:text-xs text-slate-300 font-medium">Cumulative Active</h4>
+                        <span className="text-[11px] sm:text-xs font-semibold text-slate-300 truncate">
+                          Active Energy
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-xl sm:text-3xl font-telemetry font-bold tracking-tight text-white">
+                          {kwhVal !== null ? kwhVal : "--"}
+                        </span>
+                        <span className="text-[10px] sm:text-xs font-bold text-emerald-300 uppercase">kWh</span>
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <div className="flex items-baseline justify-end gap-1">
-                        <span className="text-2xl sm:text-4xl font-telemetry font-bold tracking-tight text-white">
-                          {kwhVal !== null ? kwhVal : "--"}
+                    {/* 2. Address: Frequency */}
+                    <div className="flex flex-col justify-between pl-2 sm:pl-3">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[9px] sm:text-[10px] font-mono font-black px-1.5 py-0.5 rounded bg-teal-500/25 text-teal-300 border border-teal-400/30">
+                          Frequency
                         </span>
-                        <span className="text-xs sm:text-sm font-bold text-emerald-300 uppercase">kWh</span>
+                        <span className="text-[11px] sm:text-xs font-semibold text-slate-300 truncate">
+                          Grid Frequency
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-xl sm:text-3xl font-telemetry font-bold tracking-tight text-white">
+                          {freqVal !== null ? freqVal : "--"}
+                        </span>
+                        <span className="text-[10px] sm:text-xs font-bold text-teal-300 uppercase">Hz</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* 3. 3-Phase Voltage Monitor (R, Y, B / V1, V2, V3) */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-wider">
-                      3-Phase Voltage (L-N)
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {latestRecord?.frequency != null && (
-                        <span className="text-[10px] sm:text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                          {Number(latestRecord.frequency).toFixed(1)} Hz
+                {/* 3. Phase Voltages (L-N) — (3. R, 4. Y, 5. B) */}
+                <div className="mb-3 sm:mb-4">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        Phase Voltages (L - N)
+                      </span>
+                      <span className="text-[9px] font-mono text-slate-400 font-medium">
+                        [R, Y, B]
+                      </span>
+                    </div>
+                    {avgVoltage && (
+                      <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500">
+                        Avg: <strong className="text-slate-800 font-telemetry font-bold">{avgVoltage} V</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+                    {/* 3. Address: R */}
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-rose-300 transition-all text-center flex flex-col justify-between">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                        <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                          R
                         </span>
-                      )}
-                      {avgVoltage && (
-                        <span className="text-[11px] sm:text-xs font-semibold text-slate-500">
-                          Avg: <strong className="text-slate-800 font-telemetry font-bold">{avgVoltage} V</strong>
+                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                          Phase R
                         </span>
-                      )}
+                      </div>
+                      <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                        {v1Val !== null ? v1Val : "--"}
+                      </div>
+                      <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                        Volts (V)
+                      </div>
+                    </div>
+
+                    {/* 4. Address: Y */}
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-amber-300 transition-all text-center flex flex-col justify-between">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                        <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                          Y
+                        </span>
+                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                          Phase Y
+                        </span>
+                      </div>
+                      <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                        {v2Val !== null ? v2Val : "--"}
+                      </div>
+                      <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                        Volts (V)
+                      </div>
+                    </div>
+
+                    {/* 5. Address: B */}
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-blue-300 transition-all text-center flex flex-col justify-between">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
+                        <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                          B
+                        </span>
+                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                          Phase B
+                        </span>
+                      </div>
+                      <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                        {v3Val !== null ? v3Val : "--"}
+                      </div>
+                      <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                        Volts (V)
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Line-to-Line Voltages (L-L) — (6. RY, 7. YB, 8. BR) */}
+                <div className="mb-3 sm:mb-4">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        Line-to-Line Voltages (L - L)
+                      </span>
+                      <span className="text-[9px] font-mono text-slate-400 font-medium">
+                        [RY, YB, BR]
+                      </span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                    {/* Phase 1 / R */}
-                    <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-slate-50/90 border border-slate-200/80 hover:bg-emerald-50/40 hover:border-emerald-300 transition-all duration-200 text-center flex flex-col justify-between">
-                      <div className="flex items-center justify-center gap-1 mb-1">
-                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-rose-500 shrink-0"></span>
-                        <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-600 uppercase tracking-tight sm:tracking-wider truncate">
-                          <span className="hidden sm:inline">Phase </span>1 (R)
+                  <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+                    {/* 6. Address: RY */}
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          RY
+                        </span>
+                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                          Line R-Y
                         </span>
                       </div>
-                      <div className="text-lg sm:text-2xl md:text-3xl font-telemetry font-bold text-slate-900 tracking-tight my-0.5 sm:my-1">
-                        {v1Val !== null ? v1Val : "--"}
+                      <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                        {ryVal !== null ? ryVal : "--"}
                       </div>
-                      <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500">
+                      <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
                         Volts (V)
                       </div>
                     </div>
 
-                    {/* Phase 2 / Y */}
-                    <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-slate-50/90 border border-slate-200/80 hover:bg-emerald-50/40 hover:border-emerald-300 transition-all duration-200 text-center flex flex-col justify-between">
-                      <div className="flex items-center justify-center gap-1 mb-1">
-                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500 shrink-0"></span>
-                        <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-600 uppercase tracking-tight sm:tracking-wider truncate">
-                          <span className="hidden sm:inline">Phase </span>2 (Y)
+                    {/* 7. Address: YB */}
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          YB
+                        </span>
+                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                          Line Y-B
                         </span>
                       </div>
-                      <div className="text-lg sm:text-2xl md:text-3xl font-telemetry font-bold text-slate-900 tracking-tight my-0.5 sm:my-1">
-                        {v2Val !== null ? v2Val : "--"}
+                      <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                        {ybVal !== null ? ybVal : "--"}
                       </div>
-                      <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500">
+                      <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
                         Volts (V)
                       </div>
                     </div>
 
-                    {/* Phase 3 / B */}
-                    <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-slate-50/90 border border-slate-200/80 hover:bg-emerald-50/40 hover:border-emerald-300 transition-all duration-200 text-center flex flex-col justify-between">
-                      <div className="flex items-center justify-center gap-1 mb-1">
-                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-500 shrink-0"></span>
-                        <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-600 uppercase tracking-tight sm:tracking-wider truncate">
-                          <span className="hidden sm:inline">Phase </span>3 (B)
+                    {/* 8. Address: BR */}
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          BR
+                        </span>
+                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                          Line B-R
                         </span>
                       </div>
-                      <div className="text-lg sm:text-2xl md:text-3xl font-telemetry font-bold text-slate-900 tracking-tight my-0.5 sm:my-1">
-                        {v3Val !== null ? v3Val : "--"}
+                      <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                        {brVal !== null ? brVal : "--"}
                       </div>
-                      <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500">
+                      <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
                         Volts (V)
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Phase Currents (Amps) — (9. I1, 10. I2, 11. I3) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        Phase Currents
+                      </span>
+                      <span className="text-[9px] font-mono text-slate-400 font-medium">
+                        [I1, I2, I3]
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+                    {/* 9. Address: I1 */}
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                          I1
+                        </span>
+                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                          Current R
+                        </span>
+                      </div>
+                      <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                        {i1Val !== null ? i1Val : "--"}
+                      </div>
+                      <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                        Amps (A)
+                      </div>
+                    </div>
+
+                    {/* 10. Address: I2 */}
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                          I2
+                        </span>
+                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                          Current Y
+                        </span>
+                      </div>
+                      <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                        {i2Val !== null ? i2Val : "--"}
+                      </div>
+                      <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                        Amps (A)
+                      </div>
+                    </div>
+
+                    {/* 11. Address: I3 */}
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                          I3
+                        </span>
+                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                          Current B
+                        </span>
+                      </div>
+                      <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                        {i3Val !== null ? i3Val : "--"}
+                      </div>
+                      <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                        Amps (A)
                       </div>
                     </div>
                   </div>
