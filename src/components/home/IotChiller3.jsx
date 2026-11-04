@@ -66,33 +66,36 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
       {/* Decorative Top Accent Line */}
       <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-600 via-teal-500 to-green-500"></div>
 
-      {/* 1. Header: Machine ID, Location Name, Online Badge, Timestamp */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3.5 sm:pb-4 border-b border-slate-100">
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-brand font-black text-xs sm:text-sm tracking-widest shadow-sm shadow-emerald-500/20 shrink-0">
+      {/* 1. Header: Machine ID, Location Name, Online Badge, Timestamp in Single Line */}
+      <div className="flex flex-row items-center justify-between gap-1.5 sm:gap-3 pb-2.5 sm:pb-4 border-b border-slate-100">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+          <div className="px-2 sm:px-3.5 py-0.5 sm:py-1 rounded-md sm:rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-brand font-black text-[11px] sm:text-sm tracking-wider shadow-sm shadow-emerald-500/20 shrink-0">
             {machine}
           </div>
-          <div className="min-w-0">
-            <h2 className="text-sm sm:text-lg font-bold text-slate-900 leading-tight truncate">
+          <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+            <h2 className="text-xs sm:text-base lg:text-lg font-bold text-slate-900 leading-tight truncate">
               {locationName}
             </h2>
-            <div className="flex items-center gap-1.5 mt-0.5">
+            <div className="flex items-center gap-1 shrink-0">
               <span className="relative flex h-2 w-2 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-700 tracking-wide uppercase">
+              <span className="text-[9px] font-semibold text-emerald-700 uppercase sm:hidden">
+                Live
+              </span>
+              <span className="hidden sm:inline text-[10px] sm:text-[11px] font-semibold text-emerald-700 tracking-wide uppercase">
                 Live Active
               </span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-500 bg-slate-50 px-2.5 py-1 rounded-lg sm:rounded-xl border border-slate-200/60 self-start sm:self-center">
-          <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs text-slate-500 bg-slate-50 px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-xl border border-slate-200/60 shrink-0">
+          <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="font-medium truncate">
+          <span className="font-medium whitespace-nowrap">
             {latestRecord ? formatTS(latestRecord.ts) : "No data"}
           </span>
         </div>
