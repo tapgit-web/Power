@@ -63,57 +63,124 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
     const unsubscribes = [];
 
     machineKeys.forEach((machine) => {
-      const readRef = ref(database, `/${machine}/read`);
-      const unsubRead = onValue(readRef, (snapshot) => {
-        const raw = snapshot.val();
-        if (!raw) return;
+      // Listen to the machine node directly to support both /{machine} and /{machine}/read structures
+      const machineRef = ref(database, `/${machine}`);
+      const unsubRead = onValue(machineRef, (snapshot) => {
+        const rawNode = snapshot.val();
+        if (!rawNode) return;
 
-        const deviceKey = Object.keys(raw)[0];
-        if (!deviceKey) return;
+        // Support data located at /{machine}/read or directly under /{machine}
+        const raw =
+          rawNode.read !== undefined && typeof rawNode.read === "object"
+            ? rawNode.read
+            : rawNode;
 
-        const rawDeviceData = raw[deviceKey];
-        if (!rawDeviceData) return;
+        const isDirectTelemetry = (obj) =>
+          obj &&
+          typeof obj === "object" &&
+          (obj.R !== undefined ||
+            obj.r !== undefined ||
+            obj.Y !== undefined ||
+            obj.y !== undefined ||
+            obj.B !== undefined ||
+            obj.b !== undefined ||
+            obj.V1 !== undefined ||
+            obj.v1 !== undefined ||
+            obj.V_0 !== undefined ||
+            obj.KWH !== undefined ||
+            obj.kwh !== undefined ||
+            obj.Frequency !== undefined ||
+            obj.values !== undefined);
 
-        // Support both array and object structures
-        const deviceData = Array.isArray(rawDeviceData)
-          ? rawDeviceData
-          : Object.values(rawDeviceData);
-
-        const records = deviceData.map(({ ts, values }) => {
-          let v1 = null;
-          let v2 = null;
-          let v3 = null;
-
-          if (values) {
-            // Check 0-indexed voltages (V_0, V_1, V_2 or V0, V1, V2)
-            if (
-              values.V_0 !== undefined ||
-              values.v_0 !== undefined ||
-              values.V0 !== undefined ||
-              values.v0 !== undefined
-            ) {
-              v1 = values.V_0 ?? values.v_0 ?? values.V0 ?? values.v0;
-              v2 = values.V_1 ?? values.v_1 ?? values.V1 ?? values.v1;
-              v3 = values.V_2 ?? values.v_2 ?? values.V2 ?? values.v2;
-            } else {
-              // 1-indexed voltages (V1, V2, V3 or V_1, V_2, V_3)
-              v1 = values.V1 ?? values.v1 ?? values.V_1 ?? values.v_1 ?? null;
-              v2 = values.V2 ?? values.v2 ?? values.V_2 ?? values.v_2 ?? null;
-              v3 = values.V3 ?? values.v3 ?? values.V_3 ?? values.v_3 ?? null;
-            }
+        // Normalize device data into an array of items
+        let rawItems = [];
+        if (isDirectTelemetry(raw)) {
+          rawItems = [raw];
+        } else if (Array.isArray(raw)) {
+          rawItems = raw;
+        } else if (typeof raw === "object") {
+          const firstKey = Object.keys(raw)[0];
+          const firstVal = raw[firstKey];
+          if (Array.isArray(firstVal)) {
+            rawItems = firstVal;
+          } else if (firstVal && typeof firstVal === "object" && isDirectTelemetry(firstVal)) {
+            rawItems = Object.values(raw);
+          } else if (firstVal && typeof firstVal === "object") {
+            const nestedVals = Object.values(firstVal);
+            rawItems = nestedVals.length > 0 ? nestedVals : Object.values(raw);
+          } else {
+            rawItems = [raw];
           }
+        }
 
-          const kwh =
-            values?.KWH ?? values?.kwh ?? values?.kWh ?? values?.Kwh ?? values?.energy ?? null;
+        const records = rawItems
+          .map((item) => {
+            if (!item || typeof item !== "object") return null;
 
-          return {
-            ts,
-            v1,
-            v2,
-            v3,
-            kwh,
-          };
-        });
+            const ts = item.ts ?? item.timestamp ?? item.time ?? null;
+            const values =
+              item.values && typeof item.values === "object" ? item.values : item;
+
+            let v1 = null;
+            let v2 = null;
+            let v3 = null;
+
+            if (values) {
+              // 1. Check R, Y, B (3-Phase color standard: Red, Yellow, Blue from energy meters)
+              if (
+                values.R !== undefined ||
+                values.r !== undefined ||
+                values.Y !== undefined ||
+                values.y !== undefined ||
+                values.B !== undefined ||
+                values.b !== undefined
+              ) {
+                v1 = values.R ?? values.r ?? null;
+                v2 = values.Y ?? values.y ?? null;
+                v3 = values.B ?? values.b ?? null;
+              }
+              // 2. Check 0-indexed voltages (V_0, V_1, V_2 or V0, V1, V2)
+              else if (
+                values.V_0 !== undefined ||
+                values.v_0 !== undefined ||
+                values.V0 !== undefined ||
+                values.v0 !== undefined
+              ) {
+                v1 = values.V_0 ?? values.v_0 ?? values.V0 ?? values.v0;
+                v2 = values.V_1 ?? values.v_1 ?? values.V1 ?? values.v1;
+                v3 = values.V_2 ?? values.v_2 ?? values.V2 ?? values.v2;
+              }
+              // 3. Check 1-indexed voltages (V1, V2, V3 or V_1, V_2, V_3)
+              else {
+                v1 = values.V1 ?? values.v1 ?? values.V_1 ?? values.v_1 ?? null;
+                v2 = values.V2 ?? values.v2 ?? values.V_2 ?? values.v_2 ?? null;
+                v3 = values.V3 ?? values.v3 ?? values.V_3 ?? values.v_3 ?? null;
+              }
+            }
+
+            const kwh =
+              values?.KWH ?? values?.kwh ?? values?.kWh ?? values?.Kwh ?? values?.energy ?? null;
+
+            const frequency =
+              values?.Frequency ?? values?.frequency ?? values?.freq ?? values?.Freq ?? null;
+
+            const ry = values?.RY ?? values?.ry ?? null;
+            const yb = values?.YB ?? values?.yb ?? null;
+            const br = values?.BR ?? values?.br ?? null;
+
+            return {
+              ts,
+              v1,
+              v2,
+              v3,
+              kwh,
+              frequency,
+              ry,
+              yb,
+              br,
+            };
+          })
+          .filter(Boolean);
 
         setAllMachineData((prev) => ({
           ...prev,
@@ -277,26 +344,33 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
                   </div>
                 </div>
 
-                {/* 3. 3-Phase Voltage Monitor (V1, V2, V3) */}
+                {/* 3. 3-Phase Voltage Monitor (R, Y, B / V1, V2, V3) */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-wider">
                       3-Phase Voltage (L-N)
                     </span>
-                    {avgVoltage && (
-                      <span className="text-[11px] sm:text-xs font-semibold text-slate-500">
-                        Avg: <strong className="text-slate-800 font-telemetry font-bold">{avgVoltage} V</strong>
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {latestRecord?.frequency != null && (
+                        <span className="text-[10px] sm:text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          {Number(latestRecord.frequency).toFixed(1)} Hz
+                        </span>
+                      )}
+                      {avgVoltage && (
+                        <span className="text-[11px] sm:text-xs font-semibold text-slate-500">
+                          Avg: <strong className="text-slate-800 font-telemetry font-bold">{avgVoltage} V</strong>
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                    {/* Phase 1 / V1 */}
+                    {/* Phase 1 / R */}
                     <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-slate-50/90 border border-slate-200/80 hover:bg-emerald-50/40 hover:border-emerald-300 transition-all duration-200 text-center flex flex-col justify-between">
                       <div className="flex items-center justify-center gap-1 mb-1">
                         <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-rose-500 shrink-0"></span>
                         <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-600 uppercase tracking-tight sm:tracking-wider truncate">
-                          <span className="hidden sm:inline">Phase </span>1 (V1)
+                          <span className="hidden sm:inline">Phase </span>1 (R)
                         </span>
                       </div>
                       <div className="text-lg sm:text-2xl md:text-3xl font-telemetry font-bold text-slate-900 tracking-tight my-0.5 sm:my-1">
@@ -307,12 +381,12 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
                       </div>
                     </div>
 
-                    {/* Phase 2 / V2 */}
+                    {/* Phase 2 / Y */}
                     <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-slate-50/90 border border-slate-200/80 hover:bg-emerald-50/40 hover:border-emerald-300 transition-all duration-200 text-center flex flex-col justify-between">
                       <div className="flex items-center justify-center gap-1 mb-1">
                         <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500 shrink-0"></span>
                         <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-600 uppercase tracking-tight sm:tracking-wider truncate">
-                          <span className="hidden sm:inline">Phase </span>2 (V2)
+                          <span className="hidden sm:inline">Phase </span>2 (Y)
                         </span>
                       </div>
                       <div className="text-lg sm:text-2xl md:text-3xl font-telemetry font-bold text-slate-900 tracking-tight my-0.5 sm:my-1">
@@ -323,12 +397,12 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
                       </div>
                     </div>
 
-                    {/* Phase 3 / V3 */}
+                    {/* Phase 3 / B */}
                     <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-slate-50/90 border border-slate-200/80 hover:bg-emerald-50/40 hover:border-emerald-300 transition-all duration-200 text-center flex flex-col justify-between">
                       <div className="flex items-center justify-center gap-1 mb-1">
                         <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-500 shrink-0"></span>
                         <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-600 uppercase tracking-tight sm:tracking-wider truncate">
-                          <span className="hidden sm:inline">Phase </span>3 (V3)
+                          <span className="hidden sm:inline">Phase </span>3 (B)
                         </span>
                       </div>
                       <div className="text-lg sm:text-2xl md:text-3xl font-telemetry font-bold text-slate-900 tracking-tight my-0.5 sm:my-1">
