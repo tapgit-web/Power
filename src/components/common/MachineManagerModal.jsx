@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useMachineConfig } from '../../contexts/machineConfigContext';
 import { useAuth } from '../../contexts/authContext';
+import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from '../../constants/telemetryAddresses';
 
 export const MachineManagerModal = ({ isOpen, onClose }) => {
   const { isAdmin } = useAuth();
@@ -9,6 +10,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
     isSyncedWithCloud,
     addMachine,
     updateMachineName,
+    updateMachineAddresses,
     removeMachine,
     syncDefaultsToCloud,
     resetCategoryToDefault
@@ -22,6 +24,10 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
   const [editingNumber, setEditingNumber] = useState(null);
   const [editingNameValue, setEditingNameValue] = useState('');
   const [feedback, setFeedback] = useState({ type: '', message: '' });
+
+  // Address selection modal state for a specific machine
+  const [configuringNumber, setConfiguringNumber] = useState(null);
+  const [selectedAddressKeys, setSelectedAddressKeys] = useState([]);
 
   // Ensure active category is valid when config changes
   useEffect(() => {
@@ -52,11 +58,63 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
 
   if (!isOpen || !isAdmin) return null;
 
-  const currentCategoryData = machinesConfig[activeCategory] || { allowed: [], names: {} };
+  const currentCategoryData = machinesConfig[activeCategory] || { allowed: [], names: {}, addresses: {} };
   const allowedList = currentCategoryData.allowed || [];
   const namesMap = currentCategoryData.names || {};
+  const addressesMap = currentCategoryData.addresses || {};
 
   const formatMachineCode = (num) => `MC_${String(num).padStart(3, '0')}`;
+
+  const handleOpenAddressConfig = (num) => {
+    setConfiguringNumber(num);
+    const existing = addressesMap[String(num)];
+    setSelectedAddressKeys(
+      Array.isArray(existing) && existing.length > 0 ? existing : DEFAULT_ALL_ADDRESS_KEYS
+    );
+  };
+
+  const handleToggleAddress = (key) => {
+    setSelectedAddressKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  };
+
+  const handleSelectAllAddresses = () => {
+    setSelectedAddressKeys(DEFAULT_ALL_ADDRESS_KEYS);
+  };
+
+  const handleClearAllAddresses = () => {
+    setSelectedAddressKeys([]);
+  };
+
+  const handleSelectPreset = (keys) => {
+    setSelectedAddressKeys(keys);
+  };
+
+  const handleSaveAddressConfig = async () => {
+    if (!configuringNumber) return;
+    setIsSubmitting(true);
+    try {
+      const res = await updateMachineAddresses(
+        activeCategory,
+        configuringNumber,
+        selectedAddressKeys
+      );
+      if (res.success) {
+        setFeedback({
+          type: 'success',
+          message: `Saved ${selectedAddressKeys.length} visible addresses for ${formatMachineCode(configuringNumber)}.`
+        });
+        setConfiguringNumber(null);
+      } else {
+        setFeedback({ type: 'error', message: res.error || 'Failed to update addresses.' });
+      }
+    } catch (err) {
+      setFeedback({ type: 'error', message: err.message });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Filtered list based on search
   const filteredList = allowedList.filter((num) => {
@@ -440,6 +498,28 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                           </p>
                         )}
                       </div>
+
+                      {/* Visible Telemetry Addresses Configuration Button */}
+                      <div className="mt-1 pt-2 border-t border-gray-100 flex items-center justify-between">
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                          Visible Addresses:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddressConfig(num)}
+                          className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                            (addressesMap[String(num)] || DEFAULT_ALL_ADDRESS_KEYS).length === ALL_TELEMETRY_ADDRESSES.length
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                              : 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
+                          }`}
+                          title="Configure which Modbus register addresses to display for this machine"
+                        >
+                          <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                          </svg>
+                          <span>{(addressesMap[String(num)] || DEFAULT_ALL_ADDRESS_KEYS).length} / 11 Addresses</span>
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -460,6 +540,181 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
             Done
           </button>
         </div>
+
+        {/* Address Configuration Popup Dialog */}
+        {configuringNumber && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-slate-950/70 backdrop-blur-xs animate-fadeIn">
+            <div 
+              className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="px-5 py-3.5 bg-gradient-to-r from-emerald-800 via-emerald-700 to-green-700 text-white flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold flex items-center gap-2">
+                    <span>Configure Visible Addresses</span>
+                    <span className="px-2 py-0.5 rounded-md bg-white/20 text-xs font-black">
+                      {formatMachineCode(configuringNumber)}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-emerald-100 mt-0.5">
+                    {namesMap[String(configuringNumber)] || `Machine ${configuringNumber}`} — Select which telemetry addresses to display on the dashboard
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfiguringNumber(null)}
+                  className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Quick Actions & Presets */}
+              <div className="px-5 py-2.5 bg-slate-50 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <span className="font-bold text-gray-500 mr-1 text-[11px] uppercase">Quick Select:</span>
+                  <button
+                    type="button"
+                    onClick={handleSelectAllAddresses}
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-emerald-50 hover:text-emerald-700 font-semibold text-gray-700"
+                  >
+                    Select All (11)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearAllAddresses}
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-red-50 hover:text-red-700 font-semibold text-gray-700"
+                  >
+                    Clear All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectPreset(["R", "Y", "B", "RY", "YB", "BR"])}
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-indigo-50 hover:text-indigo-700 font-semibold text-gray-700"
+                  >
+                    Voltages Only (6)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectPreset(["I1", "I2", "I3"])}
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-teal-50 hover:text-teal-700 font-semibold text-gray-700"
+                  >
+                    Currents Only (3)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectPreset(["KWH", "Frequency"])}
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-emerald-50 hover:text-emerald-700 font-semibold text-gray-700"
+                  >
+                    Energy & Grid (2)
+                  </button>
+                </div>
+                <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full">
+                  {selectedAddressKeys.length} of 11 Selected
+                </span>
+              </div>
+
+              {/* Address Checkbox List grouped by Category */}
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                {["Energy & Frequency", "Phase Voltages (VLN)", "Line Voltages (VLL)", "Phase Currents (I)"].map((groupName) => {
+                  const groupAddresses = ALL_TELEMETRY_ADDRESSES.filter((a) => a.group === groupName);
+                  const isGroupAllSelected = groupAddresses.every((a) => selectedAddressKeys.includes(a.key));
+
+                  return (
+                    <div key={groupName} className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                          {groupName}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isGroupAllSelected) {
+                              setSelectedAddressKeys((prev) =>
+                                prev.filter((k) => !groupAddresses.some((a) => a.key === k))
+                              );
+                            } else {
+                              setSelectedAddressKeys((prev) => [
+                                ...prev,
+                                ...groupAddresses.map((a) => a.key).filter((k) => !prev.includes(k)),
+                              ]);
+                            }
+                          }}
+                          className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                        >
+                          {isGroupAllSelected ? "Deselect Group" : "Select Group"}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {groupAddresses.map((item) => {
+                          const isChecked = selectedAddressKeys.includes(item.key);
+
+                          return (
+                            <label
+                              key={item.key}
+                              className={`flex items-center gap-2.5 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                                isChecked
+                                  ? "bg-white border-emerald-500 shadow-xs"
+                                  : "bg-white/60 border-slate-200 text-slate-400 opacity-70 hover:opacity-100"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleToggleAddress(item.key)}
+                                className="w-4 h-4 text-emerald-600 rounded-sm focus:ring-emerald-500 cursor-pointer"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1">
+                                  <span className={`px-1.5 py-0.2 rounded font-mono font-bold text-[10px] border ${item.badgeColor}`}>
+                                    {item.key}
+                                  </span>
+                                  <span className="font-semibold text-slate-900 truncate">
+                                    {item.name}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-slate-400 block font-medium">
+                                  Unit: {item.unit}
+                                </span>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Dialog Footer */}
+              <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between gap-3">
+                <span className="text-xs text-gray-500">
+                  Visible addresses will immediately reflect on the dashboard for this machine.
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfiguringNumber(null)}
+                    className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveAddressConfig}
+                    disabled={isSubmitting}
+                    className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmitting ? "Saving..." : "Save Addresses"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

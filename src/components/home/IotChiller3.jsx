@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { getDatabase, ref, onValue } from "firebase/database";
 import { app } from "../../firebase/firebase";
 import { useMachineConfig } from "../../contexts/machineConfigContext";
+import { DEFAULT_ALL_ADDRESS_KEYS } from "../../constants/telemetryAddresses";
 
 const database = getDatabase(app);
 
@@ -23,9 +24,84 @@ const formatTS = (ts) => {
   return `${day}/${month}/${year} ${hours}:${minutes}:${seconds} ${ampm}`;
 };
 
-const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
-  const [activeTab, setActiveTab] = useState("VLN"); // "VLN" | "VLL" | "I" | "VAF"
-  const [vafSubTab, setVafSubTab] = useState("R"); // "R" | "Y" | "B"
+const MachineTelemetryCard = ({
+  machine,
+  locationName,
+  latestRecord,
+  selectedAddresses = DEFAULT_ALL_ADDRESS_KEYS,
+}) => {
+  const isVisible = (key) =>
+    Array.isArray(selectedAddresses) ? selectedAddresses.includes(key) : true;
+
+  const showKwh = isVisible("KWH");
+  const showFreq = isVisible("Frequency");
+  const showHero = showKwh || showFreq;
+
+  const showR = isVisible("R");
+  const showY = isVisible("Y");
+  const showB = isVisible("B");
+  const vlnCount = [showR, showY, showB].filter(Boolean).length;
+  const hasVln = vlnCount > 0;
+
+  const showRY = isVisible("RY");
+  const showYB = isVisible("YB");
+  const showBR = isVisible("BR");
+  const vllCount = [showRY, showYB, showBR].filter(Boolean).length;
+  const hasVll = vllCount > 0;
+
+  const showI1 = isVisible("I1");
+  const showI2 = isVisible("I2");
+  const showI3 = isVisible("I3");
+  const iCount = [showI1, showI2, showI3].filter(Boolean).length;
+  const hasI = iCount > 0;
+
+  const hasVafR = showR || showI1 || showFreq;
+  const hasVafY = showY || showI2 || showFreq;
+  const hasVafB = showB || showI3 || showFreq;
+  const hasVaf = hasVafR || hasVafY || hasVafB;
+
+  const availableVafSubTabs = [
+    hasVafR && { id: "R", label: "R Phase", color: "bg-rose-600" },
+    hasVafY && { id: "Y", label: "Y Phase", color: "bg-amber-500" },
+    hasVafB && { id: "B", label: "B Phase", color: "bg-blue-600" },
+  ].filter(Boolean);
+
+  const [vafSubTab, setVafSubTab] = useState("R");
+  const effectiveVafSubTab = availableVafSubTabs.some((s) => s.id === vafSubTab)
+    ? vafSubTab
+    : availableVafSubTabs[0]?.id || "R";
+
+  const vafRCount = [showR, showI1, showFreq].filter(Boolean).length;
+  const vafYCount = [showY, showI2, showFreq].filter(Boolean).length;
+  const vafBCount = [showB, showI3, showFreq].filter(Boolean).length;
+
+  const availableTabs = [
+    hasVln && {
+      id: "VLN",
+      label: "VLN",
+      sub: [showR && "R", showY && "Y", showB && "B"].filter(Boolean).join(", "),
+    },
+    hasVll && {
+      id: "VLL",
+      label: "VLL",
+      sub: [showRY && "RY", showYB && "YB", showBR && "BR"].filter(Boolean).join(", "),
+    },
+    hasI && {
+      id: "I",
+      label: "I",
+      sub: [showI1 && "I1", showI2 && "I2", showI3 && "I3"].filter(Boolean).join(", "),
+    },
+    hasVaf && {
+      id: "VAF",
+      label: "VAF",
+      sub: "V · A · F",
+    },
+  ].filter(Boolean);
+
+  const [activeTab, setActiveTab] = useState("VLN");
+  const effectiveActiveTab = availableTabs.some((t) => t.id === activeTab)
+    ? activeTab
+    : availableTabs[0]?.id || null;
 
   const v1Val = latestRecord?.v1 != null ? Number(latestRecord.v1).toFixed(2) : null;
   const v2Val = latestRecord?.v2 != null ? Number(latestRecord.v2).toFixed(2) : null;
@@ -42,20 +118,32 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
   const kwhVal = latestRecord?.kwh != null ? Number(latestRecord.kwh).toFixed(2) : null;
   const freqVal = latestRecord?.frequency != null ? Number(latestRecord.frequency).toFixed(2) : null;
 
-  // Average calculations
-  const vlnVoltages = [v1Val, v2Val, v3Val].filter((v) => v !== null).map(Number);
+  // Average calculations (only from visible parameters)
+  const vlnVoltages = [
+    showR ? v1Val : null,
+    showY ? v2Val : null,
+    showB ? v3Val : null,
+  ].filter((v) => v !== null).map(Number);
   const avgVln =
     vlnVoltages.length > 0
       ? (vlnVoltages.reduce((a, b) => a + b, 0) / vlnVoltages.length).toFixed(1)
       : null;
 
-  const vllVoltages = [ryVal, ybVal, brVal].filter((v) => v !== null).map(Number);
+  const vllVoltages = [
+    showRY ? ryVal : null,
+    showYB ? ybVal : null,
+    showBR ? brVal : null,
+  ].filter((v) => v !== null).map(Number);
   const avgVll =
     vllVoltages.length > 0
       ? (vllVoltages.reduce((a, b) => a + b, 0) / vllVoltages.length).toFixed(1)
       : null;
 
-  const currents = [i1Val, i2Val, i3Val].filter((i) => i !== null).map(Number);
+  const currents = [
+    showI1 ? i1Val : null,
+    showI2 ? i2Val : null,
+    showI3 ? i3Val : null,
+  ].filter((i) => i !== null).map(Number);
   const avgCurrent =
     currents.length > 0
       ? (currents.reduce((a, b) => a + b, 0) / currents.length).toFixed(2)
@@ -101,82 +189,107 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
         </div>
       </div>
 
-      {/* 2. Hero Energy Card (1. KWH & 2. Frequency - Column layout on mobile) */}
-      <div className="my-3 sm:my-4 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-950 text-white shadow-md relative overflow-hidden">
-        <div className="absolute -right-8 -bottom-8 w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-emerald-500/20 blur-2xl pointer-events-none"></div>
+      {/* 2. Hero Energy Card (KWH & Frequency - Dynamic based on admin selection) */}
+      {showHero && (
+        <div className="my-3 sm:my-4 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-950 text-white shadow-md relative overflow-hidden">
+          <div className="absolute -right-8 -bottom-8 w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-emerald-500/20 blur-2xl pointer-events-none"></div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 relative z-10">
-          {/* Address: KWH */}
-          <div className="flex flex-col justify-between pb-2.5 sm:pb-0 sm:pr-3 border-b sm:border-b-0 sm:border-r border-white/10">
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-300 border border-emerald-400/30">
-                KWH
-              </span>
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-                Active Energy
-              </span>
-            </div>
-            <div className="flex items-baseline gap-1 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-telemetry font-bold tracking-tight text-white">
-                {kwhVal !== null ? kwhVal : "--"}
-              </span>
-              <span className="text-[10px] sm:text-xs font-bold text-emerald-300 uppercase">kWh</span>
-            </div>
-          </div>
+          <div
+            className={`grid ${
+              showKwh && showFreq
+                ? "grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4"
+                : "grid-cols-1 gap-2"
+            } relative z-10`}
+          >
+            {/* Address: KWH */}
+            {showKwh && (
+              <div
+                className={`flex flex-col justify-between ${
+                  showFreq
+                    ? "pb-2.5 sm:pb-0 sm:pr-3 border-b sm:border-b-0 sm:border-r border-white/10"
+                    : ""
+                }`}
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-300 border border-emerald-400/30">
+                    KWH
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-300">
+                    Active Energy
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="text-2xl sm:text-3xl font-telemetry font-bold tracking-tight text-white">
+                    {kwhVal !== null ? kwhVal : "--"}
+                  </span>
+                  <span className="text-[10px] sm:text-xs font-bold text-emerald-300 uppercase">
+                    kWh
+                  </span>
+                </div>
+              </div>
+            )}
 
-          {/* Address: Frequency */}
-          <div className="flex flex-col justify-between pt-0.5 sm:pt-0 sm:pl-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-teal-500/25 text-teal-300 border border-teal-400/30">
-                Frequency
-              </span>
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-teal-300">
-                Grid Frequency
-              </span>
-            </div>
-            <div className="flex items-baseline gap-1 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-telemetry font-bold tracking-tight text-white">
-                {freqVal !== null ? freqVal : "--"}
-              </span>
-              <span className="text-[10px] sm:text-xs font-bold text-teal-300 uppercase">Hz</span>
-            </div>
+            {/* Address: Frequency */}
+            {showFreq && (
+              <div
+                className={`flex flex-col justify-between ${
+                  showKwh ? "pt-0.5 sm:pt-0 sm:pl-3" : ""
+                }`}
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-teal-500/25 text-teal-300 border border-teal-400/30">
+                    Frequency
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-teal-300">
+                    Grid Frequency
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="text-2xl sm:text-3xl font-telemetry font-bold tracking-tight text-white">
+                    {freqVal !== null ? freqVal : "--"}
+                  </span>
+                  <span className="text-[10px] sm:text-xs font-bold text-teal-300 uppercase">
+                    Hz
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* 3. Main Navigation Tabs: [ VLN ] [ VLL ] [ I ] [ VAF ] */}
-      <div className="flex items-center gap-1 sm:gap-1.5 p-1 bg-slate-100 rounded-xl mb-3.5 border border-slate-200/80">
-        {[
-          { id: "VLN", label: "VLN", sub: "R, Y, B" },
-          { id: "VLL", label: "VLL", sub: "RY, YB, BR" },
-          { id: "I", label: "I", sub: "I1, I2, I3" },
-          { id: "VAF", label: "VAF", sub: "V · A · F" },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 py-1.5 sm:py-2 px-1.5 rounded-lg text-xs sm:text-sm font-bold tracking-wide transition-all duration-200 flex flex-col items-center justify-center cursor-pointer ${
-              activeTab === tab.id
-                ? "bg-emerald-700 text-white shadow-sm"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/70"
-            }`}
-          >
-            <span>{tab.label}</span>
-            <span
-              className={`text-[9px] font-medium leading-none mt-0.5 hidden sm:inline ${
-                activeTab === tab.id ? "text-emerald-100" : "text-slate-400"
+      {/* 3. Main Navigation Tabs: [ VLN ] [ VLL ] [ I ] [ VAF ] (Only tabs with selected addresses) */}
+      {availableTabs.length > 0 && (
+        <div className="flex items-center gap-1 sm:gap-1.5 p-1 bg-slate-100 rounded-xl mb-3.5 border border-slate-200/80">
+          {availableTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 py-1.5 sm:py-2 px-1.5 rounded-lg text-xs sm:text-sm font-bold tracking-wide transition-all duration-200 flex flex-col items-center justify-center cursor-pointer ${
+                effectiveActiveTab === tab.id
+                  ? "bg-emerald-700 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/70"
               }`}
             >
-              {tab.sub}
-            </span>
-          </button>
-        ))}
-      </div>
+              <span>{tab.label}</span>
+              {tab.sub && (
+                <span
+                  className={`text-[9px] font-medium leading-none mt-0.5 hidden sm:inline ${
+                    effectiveActiveTab === tab.id ? "text-emerald-100" : "text-slate-400"
+                  }`}
+                >
+                  {tab.sub}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 4. Tab Panels */}
       {/* 4A. TAB: VLN (R, Y, B) */}
-      {activeTab === "VLN" && (
+      {effectiveActiveTab === "VLN" && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
@@ -184,7 +297,7 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
                 Phase Voltages (Line to Neutral)
               </span>
               <span className="text-[9px] font-mono text-slate-400 font-medium">
-                [R, Y, B]
+                [{[showR && "R", showY && "Y", showB && "B"].filter(Boolean).join(", ")}]
               </span>
             </div>
             {avgVln && (
@@ -194,255 +307,17 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+          <div
+            className={`grid gap-2 sm:gap-2.5 ${
+              vlnCount === 1
+                ? "grid-cols-1"
+                : vlnCount === 2
+                ? "grid-cols-2"
+                : "grid-cols-3"
+            }`}
+          >
             {/* R */}
-            <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-rose-300 transition-all text-center flex flex-col justify-between">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
-                <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200">
-                  R
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                  Phase R
-                </span>
-              </div>
-              <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                {v1Val !== null ? v1Val : "--"}
-              </div>
-              <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                Volts (V)
-              </div>
-            </div>
-
-            {/* Y */}
-            <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-amber-300 transition-all text-center flex flex-col justify-between">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
-                <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                  Y
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                  Phase Y
-                </span>
-              </div>
-              <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                {v2Val !== null ? v2Val : "--"}
-              </div>
-              <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                Volts (V)
-              </div>
-            </div>
-
-            {/* B */}
-            <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-blue-300 transition-all text-center flex flex-col justify-between">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
-                <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                  B
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                  Phase B
-                </span>
-              </div>
-              <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                {v3Val !== null ? v3Val : "--"}
-              </div>
-              <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                Volts (V)
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 4B. TAB: VLL (RY, YB, BR) */}
-      {activeTab === "VLL" && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                Line-to-Line Voltages
-              </span>
-              <span className="text-[9px] font-mono text-slate-400 font-medium">
-                [RY, YB, BR]
-              </span>
-            </div>
-            {avgVll && (
-              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500">
-                Avg: <strong className="text-slate-800 font-telemetry font-bold">{avgVll} V</strong>
-              </span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
-            {/* RY */}
-            <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  RY
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                  Line R-Y
-                </span>
-              </div>
-              <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                {ryVal !== null ? ryVal : "--"}
-              </div>
-              <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                Volts (V)
-              </div>
-            </div>
-
-            {/* YB */}
-            <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  YB
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                  Line Y-B
-                </span>
-              </div>
-              <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                {ybVal !== null ? ybVal : "--"}
-              </div>
-              <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                Volts (V)
-              </div>
-            </div>
-
-            {/* BR */}
-            <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  BR
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                  Line B-R
-                </span>
-              </div>
-              <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                {brVal !== null ? brVal : "--"}
-              </div>
-              <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                Volts (V)
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 4C. TAB: I (I1, I2, I3) */}
-      {activeTab === "I" && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                Phase Currents
-              </span>
-              <span className="text-[9px] font-mono text-slate-400 font-medium">
-                [I1, I2, I3]
-              </span>
-            </div>
-            {avgCurrent && (
-              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500">
-                Avg: <strong className="text-slate-800 font-telemetry font-bold">{avgCurrent} A</strong>
-              </span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
-            {/* I1 */}
-            <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
-                  I1
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                  Current R
-                </span>
-              </div>
-              <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                {i1Val !== null ? i1Val : "--"}
-              </div>
-              <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                Amps (A)
-              </div>
-            </div>
-
-            {/* I2 */}
-            <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
-                  I2
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                  Current Y
-                </span>
-              </div>
-              <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                {i2Val !== null ? i2Val : "--"}
-              </div>
-              <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                Amps (A)
-              </div>
-            </div>
-
-            {/* I3 */}
-            <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
-              <div className="flex items-center justify-center gap-1 mb-0.5">
-                <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
-                  I3
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                  Current B
-                </span>
-              </div>
-              <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                {i3Val !== null ? i3Val : "--"}
-              </div>
-              <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                Amps (A)
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 4D. TAB: VAF (Volt - Amp - Frequency) with Sub-tabs: R, Y, B */}
-      {activeTab === "VAF" && (
-        <div>
-          {/* Sub-tab header selector for R, Y, B */}
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-              VAF by Phase
-            </span>
-            <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg border border-slate-200/80">
-              {[
-                { id: "R", label: "R Phase", color: "bg-rose-600" },
-                { id: "Y", label: "Y Phase", color: "bg-amber-500" },
-                { id: "B", label: "B Phase", color: "bg-blue-600" },
-              ].map((sub) => (
-                <button
-                  key={sub.id}
-                  type="button"
-                  onClick={() => setVafSubTab(sub.id)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-extrabold tracking-wide transition-all cursor-pointer ${
-                    vafSubTab === sub.id
-                      ? `${sub.color} text-white shadow-xs`
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
-                  }`}
-                >
-                  {sub.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Sub-tab R: R (Volt), I1 (Amp), Frequency */}
-          {vafSubTab === "R" && (
-            <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
-              {/* Volt R */}
+            {showR && (
               <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-rose-300 transition-all text-center flex flex-col justify-between">
                 <div className="flex items-center justify-center gap-1 mb-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
@@ -450,7 +325,7 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
                     R
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Voltage
+                    Phase R
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -460,49 +335,10 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
                   Volts (V)
                 </div>
               </div>
+            )}
 
-              {/* Amp I1 */}
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
-                <div className="flex items-center justify-center gap-1 mb-0.5">
-                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
-                    I1
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Current
-                  </span>
-                </div>
-                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                  {i1Val !== null ? i1Val : "--"}
-                </div>
-                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                  Amps (A)
-                </div>
-              </div>
-
-              {/* Frequency */}
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-emerald-300 transition-all text-center flex flex-col justify-between">
-                <div className="flex items-center justify-center gap-1 mb-0.5">
-                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Freq
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Frequency
-                  </span>
-                </div>
-                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                  {freqVal !== null ? freqVal : "--"}
-                </div>
-                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                  Hertz (Hz)
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Sub-tab Y: Y (Volt), I2 (Amp), Frequency */}
-          {vafSubTab === "Y" && (
-            <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
-              {/* Volt Y */}
+            {/* Y */}
+            {showY && (
               <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-amber-300 transition-all text-center flex flex-col justify-between">
                 <div className="flex items-center justify-center gap-1 mb-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
@@ -510,7 +346,7 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
                     Y
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Voltage
+                    Phase Y
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -520,49 +356,10 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
                   Volts (V)
                 </div>
               </div>
+            )}
 
-              {/* Amp I2 */}
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
-                <div className="flex items-center justify-center gap-1 mb-0.5">
-                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
-                    I2
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Current
-                  </span>
-                </div>
-                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                  {i2Val !== null ? i2Val : "--"}
-                </div>
-                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                  Amps (A)
-                </div>
-              </div>
-
-              {/* Frequency */}
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-emerald-300 transition-all text-center flex flex-col justify-between">
-                <div className="flex items-center justify-center gap-1 mb-0.5">
-                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Freq
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Frequency
-                  </span>
-                </div>
-                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                  {freqVal !== null ? freqVal : "--"}
-                </div>
-                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                  Hertz (Hz)
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Sub-tab B: B (Volt), I3 (Amp), Frequency */}
-          {vafSubTab === "B" && (
-            <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
-              {/* Volt B */}
+            {/* B */}
+            {showB && (
               <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-blue-300 transition-all text-center flex flex-col justify-between">
                 <div className="flex items-center justify-center gap-1 mb-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
@@ -570,7 +367,7 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
                     B
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Voltage
+                    Phase B
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -580,15 +377,179 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
                   Volts (V)
                 </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
 
-              {/* Amp I3 */}
+      {/* 4B. TAB: VLL (RY, YB, BR) */}
+      {effectiveActiveTab === "VLL" && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                Line-to-Line Voltages
+              </span>
+              <span className="text-[9px] font-mono text-slate-400 font-medium">
+                [{[showRY && "RY", showYB && "YB", showBR && "BR"].filter(Boolean).join(", ")}]
+              </span>
+            </div>
+            {avgVll && (
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500">
+                Avg: <strong className="text-slate-800 font-telemetry font-bold">{avgVll} V</strong>
+              </span>
+            )}
+          </div>
+
+          <div
+            className={`grid gap-2 sm:gap-2.5 ${
+              vllCount === 1
+                ? "grid-cols-1"
+                : vllCount === 2
+                ? "grid-cols-2"
+                : "grid-cols-3"
+            }`}
+          >
+            {/* RY */}
+            {showRY && (
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    RY
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                    Line R-Y
+                  </span>
+                </div>
+                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                  {ryVal !== null ? ryVal : "--"}
+                </div>
+                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                  Volts (V)
+                </div>
+              </div>
+            )}
+
+            {/* YB */}
+            {showYB && (
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    YB
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                    Line Y-B
+                  </span>
+                </div>
+                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                  {ybVal !== null ? ybVal : "--"}
+                </div>
+                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                  Volts (V)
+                </div>
+              </div>
+            )}
+
+            {/* BR */}
+            {showBR && (
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    BR
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                    Line B-R
+                  </span>
+                </div>
+                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                  {brVal !== null ? brVal : "--"}
+                </div>
+                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                  Volts (V)
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4C. TAB: I (I1, I2, I3) */}
+      {effectiveActiveTab === "I" && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                Phase Currents
+              </span>
+              <span className="text-[9px] font-mono text-slate-400 font-medium">
+                [{[showI1 && "I1", showI2 && "I2", showI3 && "I3"].filter(Boolean).join(", ")}]
+              </span>
+            </div>
+            {avgCurrent && (
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500">
+                Avg: <strong className="text-slate-800 font-telemetry font-bold">{avgCurrent} A</strong>
+              </span>
+            )}
+          </div>
+
+          <div
+            className={`grid gap-2 sm:gap-2.5 ${
+              iCount === 1
+                ? "grid-cols-1"
+                : iCount === 2
+                ? "grid-cols-2"
+                : "grid-cols-3"
+            }`}
+          >
+            {/* I1 */}
+            {showI1 && (
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                    I1
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                    Current R
+                  </span>
+                </div>
+                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                  {i1Val !== null ? i1Val : "--"}
+                </div>
+                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                  Amps (A)
+                </div>
+              </div>
+            )}
+
+            {/* I2 */}
+            {showI2 && (
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                    I2
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                    Current Y
+                  </span>
+                </div>
+                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                  {i2Val !== null ? i2Val : "--"}
+                </div>
+                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                  Amps (A)
+                </div>
+              </div>
+            )}
+
+            {/* I3 */}
+            {showI3 && (
               <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
                 <div className="flex items-center justify-center gap-1 mb-0.5">
                   <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
                     I3
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Current
+                    Current B
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -598,26 +559,270 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
                   Amps (A)
                 </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4D. TAB: VAF (Volt - Amp - Frequency) with Sub-tabs: R, Y, B */}
+      {effectiveActiveTab === "VAF" && (
+        <div>
+          {/* Sub-tab header selector for R, Y, B */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+              VAF by Phase
+            </span>
+            {availableVafSubTabs.length > 1 && (
+              <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg border border-slate-200/80">
+                {availableVafSubTabs.map((sub) => (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => setVafSubTab(sub.id)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-extrabold tracking-wide transition-all cursor-pointer ${
+                      effectiveVafSubTab === sub.id
+                        ? `${sub.color} text-white shadow-xs`
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                    }`}
+                  >
+                    {sub.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Sub-tab R: R (Volt), I1 (Amp), Frequency */}
+          {effectiveVafSubTab === "R" && (
+            <div
+              className={`grid gap-2 sm:gap-2.5 ${
+                vafRCount === 1
+                  ? "grid-cols-1"
+                  : vafRCount === 2
+                  ? "grid-cols-2"
+                  : "grid-cols-3"
+              }`}
+            >
+              {/* Volt R */}
+              {showR && (
+                <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-rose-300 transition-all text-center flex flex-col justify-between">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                    <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                      R
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                      Voltage
+                    </span>
+                  </div>
+                  <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                    {v1Val !== null ? v1Val : "--"}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                    Volts (V)
+                  </div>
+                </div>
+              )}
+
+              {/* Amp I1 */}
+              {showI1 && (
+                <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                      I1
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                      Current
+                    </span>
+                  </div>
+                  <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                    {i1Val !== null ? i1Val : "--"}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                    Amps (A)
+                  </div>
+                </div>
+              )}
 
               {/* Frequency */}
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-emerald-300 transition-all text-center flex flex-col justify-between">
-                <div className="flex items-center justify-center gap-1 mb-0.5">
-                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Freq
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Frequency
-                  </span>
+              {showFreq && (
+                <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-emerald-300 transition-all text-center flex flex-col justify-between">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Freq
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                      Frequency
+                    </span>
+                  </div>
+                  <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                    {freqVal !== null ? freqVal : "--"}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                    Hertz (Hz)
+                  </div>
                 </div>
-                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                  {freqVal !== null ? freqVal : "--"}
-                </div>
-                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                  Hertz (Hz)
-                </div>
-              </div>
+              )}
             </div>
           )}
+
+          {/* Sub-tab Y: Y (Volt), I2 (Amp), Frequency */}
+          {effectiveVafSubTab === "Y" && (
+            <div
+              className={`grid gap-2 sm:gap-2.5 ${
+                vafYCount === 1
+                  ? "grid-cols-1"
+                  : vafYCount === 2
+                  ? "grid-cols-2"
+                  : "grid-cols-3"
+              }`}
+            >
+              {/* Volt Y */}
+              {showY && (
+                <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-amber-300 transition-all text-center flex flex-col justify-between">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                    <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                      Y
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                      Voltage
+                    </span>
+                  </div>
+                  <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                    {v2Val !== null ? v2Val : "--"}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                    Volts (V)
+                  </div>
+                </div>
+              )}
+
+              {/* Amp I2 */}
+              {showI2 && (
+                <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                      I2
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                      Current
+                    </span>
+                  </div>
+                  <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                    {i2Val !== null ? i2Val : "--"}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                    Amps (A)
+                  </div>
+                </div>
+              )}
+
+              {/* Frequency */}
+              {showFreq && (
+                <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-emerald-300 transition-all text-center flex flex-col justify-between">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Freq
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                      Frequency
+                    </span>
+                  </div>
+                  <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                    {freqVal !== null ? freqVal : "--"}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                    Hertz (Hz)
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sub-tab B: B (Volt), I3 (Amp), Frequency */}
+          {effectiveVafSubTab === "B" && (
+            <div
+              className={`grid gap-2 sm:gap-2.5 ${
+                vafBCount === 1
+                  ? "grid-cols-1"
+                  : vafBCount === 2
+                  ? "grid-cols-2"
+                  : "grid-cols-3"
+              }`}
+            >
+              {/* Volt B */}
+              {showB && (
+                <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-blue-300 transition-all text-center flex flex-col justify-between">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
+                    <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                      B
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                      Voltage
+                    </span>
+                  </div>
+                  <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                    {v3Val !== null ? v3Val : "--"}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                    Volts (V)
+                  </div>
+                </div>
+              )}
+
+              {/* Amp I3 */}
+              {showI3 && (
+                <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-teal-300 transition-all text-center flex flex-col justify-between">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                      I3
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                      Current
+                    </span>
+                  </div>
+                  <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                    {i3Val !== null ? i3Val : "--"}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                    Amps (A)
+                  </div>
+                </div>
+              )}
+
+              {/* Frequency */}
+              {showFreq && (
+                <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-emerald-300 transition-all text-center flex flex-col justify-between">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Freq
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                      Frequency
+                    </span>
+                  </div>
+                  <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                    {freqVal !== null ? freqVal : "--"}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                    Hertz (Hz)
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Fallback when no addresses are selected for this machine */}
+      {!showHero && availableTabs.length === 0 && (
+        <div className="my-6 p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center">
+          <p className="text-xs font-semibold text-slate-600">No telemetry addresses selected</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            Configure visible addresses for this machine via the Settings (Machine Manager) modal.
+          </p>
         </div>
       )}
     </div>
@@ -626,7 +831,7 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
 
 export const Iot_chiller = ({ searchQuery = "" }) => {
   const { getCategoryConfig } = useMachineConfig();
-  const { allowedNumbers, machineNames } = getCategoryConfig("power_meters");
+  const { allowedNumbers, machineNames, machineAddresses } = getCategoryConfig("power_meters");
 
   const [machineKeys, setMachineKeys] = useState([]);
   const [allMachineData, setAllMachineData] = useState({});
@@ -874,12 +1079,20 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
               machineNames[machineNumber] ||
               `Machine ${machineNumber}`;
 
+            const rawSelected =
+              machineAddresses?.[String(machineNumber)] ??
+              machineAddresses?.[machineNumber];
+            const selectedAddresses = Array.isArray(rawSelected)
+              ? rawSelected
+              : DEFAULT_ALL_ADDRESS_KEYS;
+
             return (
               <MachineTelemetryCard
                 key={machine}
                 machine={machine}
                 locationName={locationName}
                 latestRecord={latestRecord}
+                selectedAddresses={selectedAddresses}
               />
             );
           })}

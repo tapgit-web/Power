@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getDatabase, ref, onValue, set } from 'firebase/database';
 import { app } from '../../firebase/firebase';
+import { DEFAULT_ALL_ADDRESS_KEYS } from '../../constants/telemetryAddresses';
 
 const database = getDatabase(app);
 
@@ -14,6 +15,9 @@ export const DEFAULT_MACHINES_CONFIG = {
     allowed: [1],
     names: {
       "1": "Unit 001"
+    },
+    addresses: {
+      "1": DEFAULT_ALL_ADDRESS_KEYS
     }
   }
 };
@@ -48,7 +52,8 @@ export const MachineConfigProvider = ({ children }) => {
             allowed: Array.isArray(data[key]?.allowed)
               ? data[key].allowed
               : DEFAULT_MACHINES_CONFIG[key].allowed,
-            names: data[key]?.names || DEFAULT_MACHINES_CONFIG[key].names
+            names: data[key]?.names || DEFAULT_MACHINES_CONFIG[key].names,
+            addresses: data[key]?.addresses || DEFAULT_MACHINES_CONFIG[key].addresses || {}
           };
         });
         // Include any additional custom categories configured in the cloud
@@ -57,7 +62,8 @@ export const MachineConfigProvider = ({ children }) => {
             merged[key] = {
               label: data[key].label || key,
               allowed: Array.isArray(data[key].allowed) ? data[key].allowed : [],
-              names: data[key].names || {}
+              names: data[key].names || {},
+              addresses: data[key].addresses || {}
             };
           }
         });
@@ -91,8 +97,8 @@ export const MachineConfigProvider = ({ children }) => {
     }
   };
 
-  // Add a new machine number and name to a category
-  const addMachine = async (categoryKey, machineNumber, machineName) => {
+  // Add a new machine number, name, and optional selected addresses to a category
+  const addMachine = async (categoryKey, machineNumber, machineName, selectedAddresses = null) => {
     const num = parseInt(machineNumber, 10);
     if (isNaN(num)) throw new Error('Machine number must be a valid number');
     const nameStr = (machineName || '').trim() || `Machine ${num}`;
@@ -100,6 +106,7 @@ export const MachineConfigProvider = ({ children }) => {
     const currentCat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG[categoryKey];
     const currentAllowed = currentCat.allowed || [];
     const currentNames = currentCat.names || {};
+    const currentAddresses = currentCat.addresses || {};
 
     const updatedAllowed = currentAllowed.includes(num)
       ? currentAllowed
@@ -110,12 +117,20 @@ export const MachineConfigProvider = ({ children }) => {
       [String(num)]: nameStr
     };
 
+    const updatedAddresses = {
+      ...currentAddresses,
+      [String(num)]: Array.isArray(selectedAddresses) && selectedAddresses.length > 0
+        ? selectedAddresses
+        : DEFAULT_ALL_ADDRESS_KEYS
+    };
+
     const updatedConfig = {
       ...machinesConfig,
       [categoryKey]: {
         ...currentCat,
         allowed: updatedAllowed,
-        names: updatedNames
+        names: updatedNames,
+        addresses: updatedAddresses
       }
     };
 
@@ -144,7 +159,29 @@ export const MachineConfigProvider = ({ children }) => {
     return await persistConfig(updatedConfig);
   };
 
-  // Remove a machine from allowed list and names
+  // Update selected register addresses for a machine
+  const updateMachineAddresses = async (categoryKey, machineNumber, addressKeys) => {
+    const num = parseInt(machineNumber, 10);
+    const currentCat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG[categoryKey];
+    const currentAddresses = currentCat.addresses || {};
+
+    const updatedAddresses = {
+      ...currentAddresses,
+      [String(num)]: Array.isArray(addressKeys) ? addressKeys : DEFAULT_ALL_ADDRESS_KEYS
+    };
+
+    const updatedConfig = {
+      ...machinesConfig,
+      [categoryKey]: {
+        ...currentCat,
+        addresses: updatedAddresses
+      }
+    };
+
+    return await persistConfig(updatedConfig);
+  };
+
+  // Remove a machine from allowed list, names, and addresses
   const removeMachine = async (categoryKey, machineNumber) => {
     const num = parseInt(machineNumber, 10);
     const currentCat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG[categoryKey];
@@ -153,12 +190,16 @@ export const MachineConfigProvider = ({ children }) => {
     const updatedNames = { ...(currentCat.names || {}) };
     delete updatedNames[String(num)];
 
+    const updatedAddresses = { ...(currentCat.addresses || {}) };
+    delete updatedAddresses[String(num)];
+
     const updatedConfig = {
       ...machinesConfig,
       [categoryKey]: {
         ...currentCat,
         allowed: updatedAllowed,
-        names: updatedNames
+        names: updatedNames,
+        addresses: updatedAddresses
       }
     };
 
@@ -188,6 +229,7 @@ export const MachineConfigProvider = ({ children }) => {
     return {
       allowedNumbers: cat?.allowed || [],
       machineNames: cat?.names || {},
+      machineAddresses: cat?.addresses || {},
       label: cat?.label || categoryKey
     };
   };
@@ -198,6 +240,7 @@ export const MachineConfigProvider = ({ children }) => {
     isLoading,
     addMachine,
     updateMachineName,
+    updateMachineAddresses,
     removeMachine,
     resetCategoryToDefault,
     syncDefaultsToCloud,
