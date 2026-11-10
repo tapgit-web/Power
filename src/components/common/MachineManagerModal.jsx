@@ -14,7 +14,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
     resetCategoryToDefault
   } = useMachineConfig();
 
-  const [activeCategory, setActiveCategory] = useState('chiller_300L');
+  const [activeCategory, setActiveCategory] = useState('power_meters');
   const [machineNumber, setMachineNumber] = useState('');
   const [machineName, setMachineName] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
@@ -22,6 +22,14 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
   const [editingNumber, setEditingNumber] = useState(null);
   const [editingNameValue, setEditingNameValue] = useState('');
   const [feedback, setFeedback] = useState({ type: '', message: '' });
+
+  // Ensure active category is valid when config changes
+  useEffect(() => {
+    if (!machinesConfig[activeCategory]) {
+      const firstKey = Object.keys(machinesConfig)[0] || 'power_meters';
+      setActiveCategory(firstKey);
+    }
+  }, [machinesConfig, activeCategory]);
 
   // Close modal on Escape key
   useEffect(() => {
@@ -109,7 +117,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
 
   const handleRemove = async (num) => {
     const confirmed = window.confirm(
-      `Are you sure you want to remove ${formatMachineCode(num)} from the ${currentCategoryData.label || 'chiller'} dashboard?`
+      `Are you sure you want to remove ${formatMachineCode(num)} from the ${currentCategoryData.label || 'power monitor'} dashboard?`
     );
     if (!confirmed) return;
 
@@ -205,31 +213,30 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
         {/* Category Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-6 pt-4 pb-3 bg-gray-50 border-b border-gray-200">
           <div className="flex items-center gap-2">
-            {[
-              { id: 'chiller_300L', label: '300L Chillers', count: (machinesConfig.chiller_300L?.allowed || []).length },
-              { id: 'chiller_200L', label: '200L Chillers', count: (machinesConfig.chiller_200L?.allowed || []).length },
-              { id: 'chiller_60L', label: '60L Chillers', count: (machinesConfig.chiller_60L?.allowed || []).length }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setActiveCategory(tab.id);
-                  setEditingNumber(null);
-                }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 ${
-                  activeCategory === tab.id
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-                    : 'bg-white text-gray-600 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200'
-                }`}
-              >
-                <span>{tab.label}</span>
-                <span className={`px-2 py-0.5 rounded-full text-xs ${
-                  activeCategory === tab.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
-                }`}>
-                  {tab.count}
-                </span>
-              </button>
-            ))}
+            {Object.keys(machinesConfig).map((catId) => {
+              const cat = machinesConfig[catId];
+              return (
+                <button
+                  key={catId}
+                  onClick={() => {
+                    setActiveCategory(catId);
+                    setEditingNumber(null);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                    activeCategory === catId
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                      : 'bg-white text-gray-600 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200'
+                  }`}
+                >
+                  <span>{cat?.label || catId}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${
+                    activeCategory === catId ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {(cat?.allowed || []).length}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           <button

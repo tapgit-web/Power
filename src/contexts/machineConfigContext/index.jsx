@@ -4,57 +4,16 @@ import { app } from '../../firebase/firebase';
 
 const database = getDatabase(app);
 
-// Baseline defaults in case Firebase has not been seeded yet
+// Dedicated Firebase Realtime Database path for Power Monitor project (isolated from other projects)
+const POWER_CONFIG_PATH = 'power_app_config/machines';
+
+// Dedicated baseline defaults for Power Monitoring machines
 export const DEFAULT_MACHINES_CONFIG = {
-  chiller_300L: {
-    label: "300L Chillers",
-    allowed: [1, 6, 10, 110, 111, 12, 13, 14, 16, 17, 20, 21, 22, 26, 27, 28, 29, 30, 31, 32, 33, 34],
+  power_meters: {
+    label: "Power Meters",
+    allowed: [1],
     names: {
-      "1": "Unit 001",
-      "6": "RAIPUR",
-      "10": "GUNTUR",
-      "110": "GUNTUR",
-      "111": "Nellore-2",
-      "12": "SANGLI",
-      "13": "NAGPUR-2",
-      "14": "Vellore",
-      "16": "Hubli",
-      "17": "Satara",
-      "20": "Annamayya",
-      "21": "Anantapur",
-      "22": "Akola",
-      "26": "Salem",
-      "27": "Rayachoti",
-      "28": "Machine 28",
-      "29": "Chandrapur",
-      "30": "Vijayawada",
-      "31": "Nalgonda",
-      "32": "Machine 32",
-      "33": "Nashik-2",
-      "34": "Ranipet"
-    }
-  },
-  chiller_200L: {
-    label: "200L Chillers",
-    allowed: [3, 4, 7, 9, 15, 18, 19, 24, 25],
-    names: {
-      "3": "NAGPUR",
-      "4": "NARASARAOPET",
-      "7": "Ahmednagar",
-      "9": "BELGUM",
-      "15": "Chennai OMR",
-      "18": "Jamshedpur",
-      "19": "Ahmedabad",
-      "24": "TIRUPATI",
-      "25": "Nandyalaya"
-    }
-  },
-  chiller_60L: {
-    label: "60L Chillers",
-    allowed: [5, 23],
-    names: {
-      "5": "DODABALLAPUR",
-      "23": "CHECKBALLAPUR"
+      "1": "Unit 001"
     }
   }
 };
@@ -74,39 +33,34 @@ export const MachineConfigProvider = ({ children }) => {
   const [isSyncedWithCloud, setIsSyncedWithCloud] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Subscribe to Firebase RTDB node `/app_config/machines`
+  // Subscribe to Firebase RTDB node `/power_app_config/machines`
   useEffect(() => {
-    const configRef = ref(database, 'app_config/machines');
+    const configRef = ref(database, POWER_CONFIG_PATH);
     const unsubscribe = onValue(configRef, (snapshot) => {
       const data = snapshot.val();
       if (data && typeof data === 'object') {
-        // Merge with defaults to ensure all categories and fields remain intact
-        const merged = {
-          chiller_300L: {
-            ...DEFAULT_MACHINES_CONFIG.chiller_300L,
-            ...(data.chiller_300L || {}),
-            allowed: Array.isArray(data.chiller_300L?.allowed)
-              ? data.chiller_300L.allowed
-              : DEFAULT_MACHINES_CONFIG.chiller_300L.allowed,
-            names: data.chiller_300L?.names || DEFAULT_MACHINES_CONFIG.chiller_300L.names
-          },
-          chiller_200L: {
-            ...DEFAULT_MACHINES_CONFIG.chiller_200L,
-            ...(data.chiller_200L || {}),
-            allowed: Array.isArray(data.chiller_200L?.allowed)
-              ? data.chiller_200L.allowed
-              : DEFAULT_MACHINES_CONFIG.chiller_200L.allowed,
-            names: data.chiller_200L?.names || DEFAULT_MACHINES_CONFIG.chiller_200L.names
-          },
-          chiller_60L: {
-            ...DEFAULT_MACHINES_CONFIG.chiller_60L,
-            ...(data.chiller_60L || {}),
-            allowed: Array.isArray(data.chiller_60L?.allowed)
-              ? data.chiller_60L.allowed
-              : DEFAULT_MACHINES_CONFIG.chiller_60L.allowed,
-            names: data.chiller_60L?.names || DEFAULT_MACHINES_CONFIG.chiller_60L.names
+        const merged = {};
+        // Merge known default categories
+        Object.keys(DEFAULT_MACHINES_CONFIG).forEach((key) => {
+          merged[key] = {
+            ...DEFAULT_MACHINES_CONFIG[key],
+            ...(data[key] || {}),
+            allowed: Array.isArray(data[key]?.allowed)
+              ? data[key].allowed
+              : DEFAULT_MACHINES_CONFIG[key].allowed,
+            names: data[key]?.names || DEFAULT_MACHINES_CONFIG[key].names
+          };
+        });
+        // Include any additional custom categories configured in the cloud
+        Object.keys(data).forEach((key) => {
+          if (!merged[key] && typeof data[key] === 'object') {
+            merged[key] = {
+              label: data[key].label || key,
+              allowed: Array.isArray(data[key].allowed) ? data[key].allowed : [],
+              names: data[key].names || {}
+            };
           }
-        };
+        });
         setMachinesConfig(merged);
         setIsSyncedWithCloud(true);
       } else {
@@ -126,7 +80,7 @@ export const MachineConfigProvider = ({ children }) => {
   // Helper to persist current/updated configuration to Firebase
   const persistConfig = async (newConfig) => {
     try {
-      const configRef = ref(database, 'app_config/machines');
+      const configRef = ref(database, POWER_CONFIG_PATH);
       await set(configRef, newConfig);
       setMachinesConfig(newConfig);
       setIsSyncedWithCloud(true);
@@ -226,8 +180,11 @@ export const MachineConfigProvider = ({ children }) => {
   };
 
   // Fast getter for consumption by dashboard components
-  const getCategoryConfig = (categoryKey) => {
-    const cat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG[categoryKey];
+  const getCategoryConfig = (categoryKey = 'power_meters') => {
+    const cat =
+      machinesConfig[categoryKey] ||
+      Object.values(machinesConfig)[0] ||
+      DEFAULT_MACHINES_CONFIG.power_meters;
     return {
       allowedNumbers: cat?.allowed || [],
       machineNames: cat?.names || {},

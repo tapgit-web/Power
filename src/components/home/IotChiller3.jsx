@@ -626,7 +626,7 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
 
 export const Iot_chiller = ({ searchQuery = "" }) => {
   const { getCategoryConfig } = useMachineConfig();
-  const { allowedNumbers, machineNames } = getCategoryConfig("chiller_300L");
+  const { allowedNumbers, machineNames } = getCategoryConfig("power_meters");
 
   const [machineKeys, setMachineKeys] = useState([]);
   const [allMachineData, setAllMachineData] = useState({});
