@@ -101,23 +101,23 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
         </div>
       </div>
 
-      {/* 2. Hero Energy Card (1. KWH & 2. Frequency) */}
+      {/* 2. Hero Energy Card (1. KWH & 2. Frequency - Column layout on mobile) */}
       <div className="my-3 sm:my-4 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-950 text-white shadow-md relative overflow-hidden">
         <div className="absolute -right-8 -bottom-8 w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-emerald-500/20 blur-2xl pointer-events-none"></div>
 
-        <div className="grid grid-cols-2 gap-3 relative z-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 relative z-10">
           {/* Address: KWH */}
-          <div className="flex flex-col justify-between pr-2 sm:pr-3 border-r border-white/10">
+          <div className="flex flex-col justify-between pb-2.5 sm:pb-0 sm:pr-3 border-b sm:border-b-0 sm:border-r border-white/10">
             <div className="flex items-center gap-1.5 mb-1">
               <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-300 border border-emerald-400/30">
                 KWH
               </span>
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-300 truncate">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-300">
                 Active Energy
               </span>
             </div>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-xl sm:text-3xl font-telemetry font-bold tracking-tight text-white">
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="text-2xl sm:text-3xl font-telemetry font-bold tracking-tight text-white">
                 {kwhVal !== null ? kwhVal : "--"}
               </span>
               <span className="text-[10px] sm:text-xs font-bold text-emerald-300 uppercase">kWh</span>
@@ -125,17 +125,17 @@ const MachineTelemetryCard = ({ machine, locationName, latestRecord }) => {
           </div>
 
           {/* Address: Frequency */}
-          <div className="flex flex-col justify-between pl-2 sm:pl-3">
+          <div className="flex flex-col justify-between pt-0.5 sm:pt-0 sm:pl-3">
             <div className="flex items-center gap-1.5 mb-1">
               <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-teal-500/25 text-teal-300 border border-teal-400/30">
                 Frequency
               </span>
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-teal-300 truncate">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-teal-300">
                 Grid Frequency
               </span>
             </div>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-xl sm:text-3xl font-telemetry font-bold tracking-tight text-white">
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="text-2xl sm:text-3xl font-telemetry font-bold tracking-tight text-white">
                 {freqVal !== null ? freqVal : "--"}
               </span>
               <span className="text-[10px] sm:text-xs font-bold text-teal-300 uppercase">Hz</span>
