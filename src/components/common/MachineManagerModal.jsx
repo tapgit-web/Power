@@ -552,7 +552,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                           <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                           </svg>
-                          <span>{(addressesMap[String(num)] || DEFAULT_ALL_ADDRESS_KEYS).length} / 11 Addresses</span>
+                          <span>{(addressesMap[String(num)] || DEFAULT_ALL_ADDRESS_KEYS).length} / {ALL_TELEMETRY_ADDRESSES.length} Addresses</span>
                         </button>
                       </div>
                     </div>
@@ -614,7 +614,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                     onClick={handleSelectAllAddresses}
                     className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-emerald-50 hover:text-emerald-700 font-semibold text-gray-700 cursor-pointer"
                   >
-                    Select All (11)
+                    Select All ({ALL_TELEMETRY_ADDRESSES.length})
                   </button>
                   <button
                     type="button"
@@ -639,6 +639,13 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                   </button>
                   <button
                     type="button"
+                    onClick={() => handleSelectPreset(["W", "PF", "KVA", "KVAR"])}
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-amber-50 hover:text-amber-700 font-semibold text-gray-700 cursor-pointer"
+                  >
+                    Power Only (4)
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleSelectPreset(["KWH", "Frequency"])}
                     className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-emerald-50 hover:text-emerald-700 font-semibold text-gray-700 cursor-pointer"
                   >
@@ -654,13 +661,13 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                   </button>
                 </div>
                 <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full">
-                  {selectedAddressKeys.length} of 11 Selected
+                  {selectedAddressKeys.length} of {ALL_TELEMETRY_ADDRESSES.length} Selected
                 </span>
               </div>
 
               {/* Address List with Editable Additional Names grouped by Category */}
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                {["Energy & Frequency", "Phase Voltages (VLN)", "Line Voltages (VLL)", "Phase Currents (I)"].map((groupName) => {
+                {Array.from(new Set(ALL_TELEMETRY_ADDRESSES.map((a) => a.group))).map((groupName) => {
                   const groupAddresses = ALL_TELEMETRY_ADDRESSES.filter((a) => a.group === groupName);
                   const isGroupAllSelected = groupAddresses.every((a) => selectedAddressKeys.includes(a.key));
 

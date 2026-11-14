@@ -61,6 +61,13 @@ const MachineTelemetryCard = ({
   const iCount = [showI1, showI2, showI3].filter(Boolean).length;
   const hasI = iCount > 0;
 
+  const showW = isVisible("W");
+  const showPF = isVisible("PF");
+  const showKVA = isVisible("KVA");
+  const showKVAR = isVisible("KVAR");
+  const powerCount = [showW, showPF, showKVA, showKVAR].filter(Boolean).length;
+  const hasPower = powerCount > 0;
+
   const hasVafR = showR || showI1 || showFreq;
   const hasVafY = showY || showI2 || showFreq;
   const hasVafB = showB || showI3 || showFreq;
@@ -97,6 +104,11 @@ const MachineTelemetryCard = ({
       label: "I",
       sub: [showI1 && "I1", showI2 && "I2", showI3 && "I3"].filter(Boolean).join(", "),
     },
+    hasPower && {
+      id: "POWER",
+      label: "Power",
+      sub: [showW && "W", showPF && "PF", showKVA && "kVA", showKVAR && "kVAR"].filter(Boolean).join(", "),
+    },
     hasVaf && {
       id: "VAF",
       label: "VAF",
@@ -123,6 +135,27 @@ const MachineTelemetryCard = ({
 
   const kwhVal = latestRecord?.kwh != null ? Number(latestRecord.kwh).toFixed(2) : null;
   const freqVal = latestRecord?.frequency != null ? Number(latestRecord.frequency).toFixed(2) : null;
+
+  const getRawVal = (key) => {
+    if (!latestRecord) return null;
+    const vals = latestRecord.rawValues || latestRecord.values || latestRecord;
+    if (vals[key] !== undefined && vals[key] !== null) return vals[key];
+    if (vals[key.toLowerCase()] !== undefined && vals[key.toLowerCase()] !== null) return vals[key.toLowerCase()];
+    if (vals[key.toUpperCase()] !== undefined && vals[key.toUpperCase()] !== null) return vals[key.toUpperCase()];
+    return null;
+  };
+
+  const formatRegisterVal = (raw) => {
+    if (raw === null || raw === undefined) return "--";
+    const num = Number(raw);
+    if (isNaN(num)) return String(raw);
+    return Number.isInteger(num) ? String(num) : num.toFixed(2);
+  };
+
+  const wVal = formatRegisterVal(getRawVal("W"));
+  const pfVal = formatRegisterVal(getRawVal("PF"));
+  const kvaVal = formatRegisterVal(getRawVal("KVA"));
+  const kvarVal = formatRegisterVal(getRawVal("KVAR"));
 
   // Average calculations (only from visible parameters)
   const vlnVoltages = [
@@ -570,7 +603,115 @@ const MachineTelemetryCard = ({
         </div>
       )}
 
-      {/* 4D. TAB: VAF (Volt - Amp - Frequency) with Sub-tabs: R, Y, B */}
+      {/* 4D. TAB: POWER (W, PF, KVA, KVAR) */}
+      {effectiveActiveTab === "POWER" && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                Power Metrics
+              </span>
+              <span className="text-[9px] font-mono text-slate-400 font-medium">
+                [{[showW && "W", showPF && "PF", showKVA && "kVA", showKVAR && "kVAR"].filter(Boolean).join(", ")}]
+              </span>
+            </div>
+          </div>
+
+          <div
+            className={`grid gap-2 sm:gap-2.5 ${
+              powerCount === 1
+                ? "grid-cols-1"
+                : powerCount === 2
+                ? "grid-cols-2"
+                : powerCount === 3
+                ? "grid-cols-3"
+                : "grid-cols-2 sm:grid-cols-4"
+            }`}
+          >
+            {/* W (Active Power) */}
+            {showW && (
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-amber-300 transition-all text-center flex flex-col justify-between">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                    W
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                    {getLabel("W", "Active Power")}
+                  </span>
+                </div>
+                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                  {wVal}
+                </div>
+                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                  Watts (W)
+                </div>
+              </div>
+            )}
+
+            {/* PF (Power Factor) */}
+            {showPF && (
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-purple-300 transition-all text-center flex flex-col justify-between">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                    PF
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                    {getLabel("PF", "Power Factor")}
+                  </span>
+                </div>
+                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                  {pfVal}
+                </div>
+                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                  cos φ
+                </div>
+              </div>
+            )}
+
+            {/* KVA (Apparent Power) */}
+            {showKVA && (
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-sky-300 transition-all text-center flex flex-col justify-between">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-sky-50 text-sky-700 border border-sky-200">
+                    KVA
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                    {getLabel("KVA", "Apparent Power")}
+                  </span>
+                </div>
+                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                  {kvaVal}
+                </div>
+                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                  kVA
+                </div>
+              </div>
+            )}
+
+            {/* KVAR (Reactive Power) */}
+            {showKVAR && (
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-fuchsia-300 transition-all text-center flex flex-col justify-between">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200">
+                    KVAR
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
+                    {getLabel("KVAR", "Reactive Power")}
+                  </span>
+                </div>
+                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                  {kvarVal}
+                </div>
+                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                  kVAR
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4E. TAB: VAF (Volt - Amp - Frequency) with Sub-tabs: R, Y, B */}
       {effectiveActiveTab === "VAF" && (
         <div>
           {/* Sub-tab header selector for R, Y, B */}
@@ -1003,6 +1144,7 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
               i1,
               i2,
               i3,
+              rawValues: values || {},
             };
           })
           .filter(Boolean);

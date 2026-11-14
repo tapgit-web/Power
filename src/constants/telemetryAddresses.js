@@ -77,6 +77,34 @@ export const ALL_TELEMETRY_ADDRESSES = [
     unit: "A",
     badgeColor: "bg-teal-50 text-teal-700 border-teal-200",
   },
+  {
+    key: "W",
+    name: "Active Power",
+    group: "Power Metrics",
+    unit: "W",
+    badgeColor: "bg-amber-50 text-amber-700 border-amber-200",
+  },
+  {
+    key: "PF",
+    name: "Power Factor",
+    group: "Power Metrics",
+    unit: "cos φ",
+    badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
+  },
+  {
+    key: "KVA",
+    name: "Apparent Power",
+    group: "Power Metrics",
+    unit: "kVA",
+    badgeColor: "bg-sky-50 text-sky-700 border-sky-200",
+  },
+  {
+    key: "KVAR",
+    name: "Reactive Power",
+    group: "Power Metrics",
+    unit: "kVAR",
+    badgeColor: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+  },
 ];
 
 export const DEFAULT_ALL_ADDRESS_KEYS = ALL_TELEMETRY_ADDRESSES.map((a) => a.key);
