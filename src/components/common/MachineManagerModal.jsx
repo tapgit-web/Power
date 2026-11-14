@@ -13,7 +13,10 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
     updateMachineAddresses,
     removeMachine,
     syncDefaultsToCloud,
-    resetCategoryToDefault
+    resetCategoryToDefault,
+    allTelemetryAddresses = ALL_TELEMETRY_ADDRESSES,
+    addCustomRegister,
+    removeCustomRegister
   } = useMachineConfig();
 
   const [activeCategory, setActiveCategory] = useState('power_meters');
@@ -29,6 +32,14 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
   const [configuringNumber, setConfiguringNumber] = useState(null);
   const [selectedAddressKeys, setSelectedAddressKeys] = useState([]);
   const [customLabelMap, setCustomLabelMap] = useState({});
+
+  // Add Register Setup state (for defining new register read keys and display names)
+  const [showAddRegisterForm, setShowAddRegisterForm] = useState(false);
+  const [newRegKey, setNewRegKey] = useState('');
+  const [newRegName, setNewRegName] = useState('');
+  const [newRegUnit, setNewRegUnit] = useState('');
+  const [newRegGroup, setNewRegGroup] = useState('Power Metrics');
+  const [isSavingRegister, setIsSavingRegister] = useState(false);
 
   // Ensure active category is valid when config changes
   useEffect(() => {
@@ -70,11 +81,13 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
   const handleOpenAddressConfig = (num) => {
     setConfiguringNumber(num);
     const existing = addressesMap[String(num)];
+    const fallbackAll = allTelemetryAddresses.map((a) => a.key);
     setSelectedAddressKeys(
-      Array.isArray(existing) && existing.length > 0 ? existing : DEFAULT_ALL_ADDRESS_KEYS
+      Array.isArray(existing) && existing.length > 0 ? existing : fallbackAll
     );
     const existingLabels = customLabelsMap[String(num)] || {};
     setCustomLabelMap({ ...existingLabels });
+    setShowAddRegisterForm(false);
   };
 
   const handleToggleAddress = (key) => {
@@ -103,7 +116,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
   };
 
   const handleSelectAllAddresses = () => {
-    setSelectedAddressKeys(DEFAULT_ALL_ADDRESS_KEYS);
+    setSelectedAddressKeys(allTelemetryAddresses.map((a) => a.key));
   };
 
   const handleClearAllAddresses = () => {
@@ -112,6 +125,51 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
 
   const handleSelectPreset = (keys) => {
     setSelectedAddressKeys(keys);
+  };
+
+  const handleAddNewRegister = async (e) => {
+    e?.preventDefault();
+    const cleanKey = newRegKey.trim();
+    if (!cleanKey) {
+      setFeedback({ type: 'error', message: 'Please enter a register key to read from Firebase.' });
+      return;
+    }
+    setIsSavingRegister(true);
+    try {
+      await addCustomRegister({
+        key: cleanKey,
+        name: newRegName.trim() || cleanKey,
+        unit: newRegUnit.trim(),
+        group: newRegGroup.trim() || 'Power Metrics'
+      });
+      // Automatically enable this register for the current machine
+      setSelectedAddressKeys((prev) => (prev.includes(cleanKey) ? prev : [...prev, cleanKey]));
+      setFeedback({
+        type: 'success',
+        message: `Register "${cleanKey}" added successfully! It is now readable from Firebase.`
+      });
+      setNewRegKey('');
+      setNewRegName('');
+      setNewRegUnit('');
+      setShowAddRegisterForm(false);
+    } catch (err) {
+      setFeedback({ type: 'error', message: err.message || 'Failed to add register.' });
+    } finally {
+      setIsSavingRegister(false);
+    }
+  };
+
+  const handleDeleteCustomRegister = async (keyToDelete, e) => {
+    e?.stopPropagation();
+    if (window.confirm(`Delete custom register "${keyToDelete}"? This will remove it for all machines.`)) {
+      try {
+        await removeCustomRegister(keyToDelete);
+        setSelectedAddressKeys((prev) => prev.filter((k) => k !== keyToDelete));
+        setFeedback({ type: 'success', message: `Register "${keyToDelete}" removed.` });
+      } catch (err) {
+        setFeedback({ type: 'error', message: err.message || 'Failed to remove register.' });
+      }
+    }
   };
 
   const handleSaveAddressConfig = async () => {
@@ -543,7 +601,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                           type="button"
                           onClick={() => handleOpenAddressConfig(num)}
                           className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                            (addressesMap[String(num)] || DEFAULT_ALL_ADDRESS_KEYS).length === ALL_TELEMETRY_ADDRESSES.length
+                            (addressesMap[String(num)] || DEFAULT_ALL_ADDRESS_KEYS).length === allTelemetryAddresses.length
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
                               : 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
                           }`}
@@ -552,7 +610,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                           <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                           </svg>
-                          <span>{(addressesMap[String(num)] || DEFAULT_ALL_ADDRESS_KEYS).length} / {ALL_TELEMETRY_ADDRESSES.length} Addresses</span>
+                          <span>{(addressesMap[String(num)] || DEFAULT_ALL_ADDRESS_KEYS).length} / {allTelemetryAddresses.length} Addresses</span>
                         </button>
                       </div>
                     </div>
@@ -614,7 +672,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                     onClick={handleSelectAllAddresses}
                     className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-emerald-50 hover:text-emerald-700 font-semibold text-gray-700 cursor-pointer"
                   >
-                    Select All ({ALL_TELEMETRY_ADDRESSES.length})
+                    Select All ({allTelemetryAddresses.length})
                   </button>
                   <button
                     type="button"
@@ -661,14 +719,134 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                   </button>
                 </div>
                 <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full">
-                  {selectedAddressKeys.length} of {ALL_TELEMETRY_ADDRESSES.length} Selected
+                  {selectedAddressKeys.length} of {allTelemetryAddresses.length} Selected
                 </span>
+              </div>
+
+              {/* Add New Telemetry Register Setup Banner & Expandable Form */}
+              <div className="border-b border-emerald-100 bg-emerald-50/70 px-5 py-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <div>
+                      <span className="text-xs font-bold text-emerald-950">Add Register Setup</span>
+                      <span className="text-[11px] text-emerald-700 ml-2 hidden sm:inline">
+                        Set the Firebase key to read and configure its display name & unit
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddRegisterForm((prev) => !prev)}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition-all shadow-xs cursor-pointer"
+                  >
+                    <span>{showAddRegisterForm ? "✕ Close Setup" : "➕ Add Register"}</span>
+                  </button>
+                </div>
+
+                {/* Expandable Register Creation Form */}
+                {showAddRegisterForm && (
+                  <form onSubmit={handleAddNewRegister} className="mt-3 pt-3 border-t border-emerald-200/80">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                      {/* Key to Read in Firebase */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Key to Read <span className="text-rose-600">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={newRegKey}
+                          onChange={(e) => setNewRegKey(e.target.value)}
+                          placeholder="e.g. W, PF, THD, temp_1"
+                          className="w-full text-xs font-mono font-bold px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none text-slate-800"
+                          required
+                        />
+                        <span className="text-[9px] text-slate-500">Exact Firebase field name</span>
+                      </div>
+
+                      {/* Display Name */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Display Name
+                        </label>
+                        <input
+                          type="text"
+                          value={newRegName}
+                          onChange={(e) => setNewRegName(e.target.value)}
+                          placeholder="e.g. Active Power, Frequency"
+                          className="w-full text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none text-slate-800"
+                        />
+                        <span className="text-[9px] text-slate-500">Label shown on dashboard</span>
+                      </div>
+
+                      {/* Unit */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Unit
+                        </label>
+                        <input
+                          type="text"
+                          value={newRegUnit}
+                          onChange={(e) => setNewRegUnit(e.target.value)}
+                          placeholder="e.g. W, cos φ, kVA, °C, bar"
+                          className="w-full text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none text-slate-800"
+                        />
+                        <span className="text-[9px] text-slate-500">Measurement unit</span>
+                      </div>
+
+                      {/* Group */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          Group
+                        </label>
+                        <input
+                          type="text"
+                          value={newRegGroup}
+                          onChange={(e) => setNewRegGroup(e.target.value)}
+                          placeholder="Power Metrics"
+                          list="group-presets"
+                          className="w-full text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none text-slate-800"
+                        />
+                        <datalist id="group-presets">
+                          <option value="Power Metrics" />
+                          <option value="Energy & Frequency" />
+                          <option value="Phase Voltages (VLN)" />
+                          <option value="Line Voltages (VLL)" />
+                          <option value="Phase Currents (I)" />
+                          <option value="Sensors & Temperature" />
+                          <option value="Custom Registers" />
+                        </datalist>
+                        <span className="text-[9px] text-slate-500">Category section</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-emerald-200">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddRegisterForm(false)}
+                        className="px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-200/80 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingRegister || !newRegKey.trim()}
+                        className="px-3.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 cursor-pointer shadow-xs flex items-center gap-1"
+                      >
+                        {isSavingRegister ? "Saving..." : "✓ Save Register to Firebase"}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
 
               {/* Address List with Editable Additional Names grouped by Category */}
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                {Array.from(new Set(ALL_TELEMETRY_ADDRESSES.map((a) => a.group))).map((groupName) => {
-                  const groupAddresses = ALL_TELEMETRY_ADDRESSES.filter((a) => a.group === groupName);
+                {Array.from(new Set(allTelemetryAddresses.map((a) => a.group))).map((groupName) => {
+                  const groupAddresses = allTelemetryAddresses.filter((a) => a.group === groupName);
                   const isGroupAllSelected = groupAddresses.every((a) => selectedAddressKeys.includes(a.key));
 
                   return (
@@ -714,20 +892,23 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                               }`}
                             >
                               <div className="flex items-center justify-between gap-1.5 mb-1.5">
-                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <label className="flex items-center gap-1.5 cursor-pointer select-none min-w-0">
                                   <input
                                     type="checkbox"
                                     checked={isChecked}
                                     onChange={() => handleToggleAddress(item.key)}
-                                    className="w-4 h-4 text-emerald-600 rounded-sm focus:ring-emerald-500 cursor-pointer"
+                                    className="w-4 h-4 text-emerald-600 rounded-sm focus:ring-emerald-500 cursor-pointer shrink-0"
                                   />
-                                  <span className={`px-1.5 py-0.2 rounded font-mono font-bold text-[10px] border ${item.badgeColor}`}>
-                                    {item.key}
-                                  </span>
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Key:</span>
+                                    <span className={`px-1.5 py-0.2 rounded font-mono font-bold text-[10px] border truncate ${item.badgeColor || "bg-slate-100 text-slate-700 border-slate-200"}`}>
+                                      {item.key}
+                                    </span>
+                                  </div>
                                 </label>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] text-slate-400 font-semibold">
-                                    {item.unit}
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1 py-0.2 rounded border border-slate-200">
+                                    {item.unit || "--"}
                                   </span>
                                   {isCustomized && (
                                     <button
@@ -739,10 +920,26 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                                       Reset
                                     </button>
                                   )}
+                                  {item.isCustom && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleDeleteCustomRegister(item.key, e)}
+                                      title="Delete this custom register"
+                                      className="text-slate-400 hover:text-rose-600 p-0.5 rounded hover:bg-rose-50 cursor-pointer"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  )}
                                 </div>
                               </div>
 
                               <div className="mt-0.5">
+                                <div className="flex items-center justify-between mb-0.5 text-[9px] text-slate-400 font-bold uppercase">
+                                  <span>Display Name</span>
+                                  <span className="font-normal text-[8px] text-slate-400">Editable</span>
+                                </div>
                                 <input
                                   type="text"
                                   value={customVal !== undefined ? customVal : item.name}
@@ -753,7 +950,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                                       ? "bg-emerald-50/70 border-emerald-300 text-emerald-950 font-bold"
                                       : "bg-white border-slate-200 text-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400"
                                   }`}
-                                  title="Edit additional name for this register"
+                                  title="Edit display name for this register"
                                 />
                               </div>
                             </div>

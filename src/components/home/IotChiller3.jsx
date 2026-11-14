@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { getDatabase, ref, onValue } from "firebase/database";
 import { app } from "../../firebase/firebase";
 import { useMachineConfig } from "../../contexts/machineConfigContext";
-import { DEFAULT_ALL_ADDRESS_KEYS } from "../../constants/telemetryAddresses";
+import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from "../../constants/telemetryAddresses";
 
 const database = getDatabase(app);
 
@@ -31,6 +31,8 @@ const MachineTelemetryCard = ({
   selectedAddresses = DEFAULT_ALL_ADDRESS_KEYS,
   customLabels = {},
 }) => {
+  const { allTelemetryAddresses = ALL_TELEMETRY_ADDRESSES } = useMachineConfig();
+
   const isVisible = (key) =>
     Array.isArray(selectedAddresses) ? selectedAddresses.includes(key) : true;
 
@@ -61,12 +63,28 @@ const MachineTelemetryCard = ({
   const iCount = [showI1, showI2, showI3].filter(Boolean).length;
   const hasI = iCount > 0;
 
-  const showW = isVisible("W");
-  const showPF = isVisible("PF");
-  const showKVA = isVisible("KVA");
-  const showKVAR = isVisible("KVAR");
-  const powerCount = [showW, showPF, showKVA, showKVAR].filter(Boolean).length;
-  const hasPower = powerCount > 0;
+  // Dynamic Power Metrics addresses from context
+  const powerAddresses = allTelemetryAddresses.filter(
+    (a) => a.group === "Power Metrics" && isVisible(a.key)
+  );
+  const hasPower = powerAddresses.length > 0;
+
+  // Dynamic user-added or custom groups outside standard built-ins
+  const standardGroups = [
+    "Energy & Frequency",
+    "Phase Voltages (VLN)",
+    "Line Voltages (VLL)",
+    "Phase Currents (I)",
+    "Power Metrics",
+  ];
+
+  const additionalGroups = Array.from(
+    new Set(
+      allTelemetryAddresses
+        .filter((a) => !standardGroups.includes(a.group) && isVisible(a.key))
+        .map((a) => a.group)
+    )
+  );
 
   const hasVafR = showR || showI1 || showFreq;
   const hasVafY = showY || showI2 || showFreq;
@@ -107,13 +125,21 @@ const MachineTelemetryCard = ({
     hasPower && {
       id: "POWER",
       label: "Power",
-      sub: [showW && "W", showPF && "PF", showKVA && "kVA", showKVAR && "kVAR"].filter(Boolean).join(", "),
+      sub: powerAddresses.map((a) => a.key).join(", "),
     },
     hasVaf && {
       id: "VAF",
       label: "VAF",
       sub: "V · A · F",
     },
+    ...additionalGroups.map((grp) => ({
+      id: `GRP_${grp}`,
+      label: grp,
+      sub: allTelemetryAddresses
+        .filter((a) => a.group === grp && isVisible(a.key))
+        .map((a) => a.key)
+        .join(", "),
+    })),
   ].filter(Boolean);
 
   const [activeTab, setActiveTab] = useState("VLN");
@@ -151,11 +177,6 @@ const MachineTelemetryCard = ({
     if (isNaN(num)) return String(raw);
     return Number.isInteger(num) ? String(num) : num.toFixed(2);
   };
-
-  const wVal = formatRegisterVal(getRawVal("W"));
-  const pfVal = formatRegisterVal(getRawVal("PF"));
-  const kvaVal = formatRegisterVal(getRawVal("KVA"));
-  const kvarVal = formatRegisterVal(getRawVal("KVAR"));
 
   // Average calculations (only from visible parameters)
   const vlnVoltages = [
@@ -603,7 +624,7 @@ const MachineTelemetryCard = ({
         </div>
       )}
 
-      {/* 4D. TAB: POWER (W, PF, KVA, KVAR) */}
+      {/* 4D. TAB: POWER (Dynamic Power Metrics) */}
       {effectiveActiveTab === "POWER" && (
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -612,101 +633,47 @@ const MachineTelemetryCard = ({
                 Power Metrics
               </span>
               <span className="text-[9px] font-mono text-slate-400 font-medium">
-                [{[showW && "W", showPF && "PF", showKVA && "kVA", showKVAR && "kVAR"].filter(Boolean).join(", ")}]
+                [{powerAddresses.map((a) => a.key).join(", ")}]
               </span>
             </div>
           </div>
 
           <div
             className={`grid gap-2 sm:gap-2.5 ${
-              powerCount === 1
+              powerAddresses.length === 1
                 ? "grid-cols-1"
-                : powerCount === 2
+                : powerAddresses.length === 2
                 ? "grid-cols-2"
-                : powerCount === 3
+                : powerAddresses.length === 3
                 ? "grid-cols-3"
                 : "grid-cols-2 sm:grid-cols-4"
             }`}
           >
-            {/* W (Active Power) */}
-            {showW && (
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-amber-300 transition-all text-center flex flex-col justify-between">
-                <div className="flex items-center justify-center gap-1 mb-0.5">
-                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                    W
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    {getLabel("W", "Active Power")}
-                  </span>
+            {powerAddresses.map((item) => {
+              const val = formatRegisterVal(getRawVal(item.key));
+              const label = getLabel(item.key, item.name);
+              return (
+                <div
+                  key={item.key}
+                  className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-amber-300 transition-all text-center flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <span className={`text-[9px] font-mono font-black px-1 py-0.2 rounded border ${item.badgeColor || "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                      {item.key}
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate" title={label}>
+                      {label}
+                    </span>
+                  </div>
+                  <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                    {val}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                    {item.unit || "--"}
+                  </div>
                 </div>
-                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                  {wVal}
-                </div>
-                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                  Watts (W)
-                </div>
-              </div>
-            )}
-
-            {/* PF (Power Factor) */}
-            {showPF && (
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-purple-300 transition-all text-center flex flex-col justify-between">
-                <div className="flex items-center justify-center gap-1 mb-0.5">
-                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200">
-                    PF
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    {getLabel("PF", "Power Factor")}
-                  </span>
-                </div>
-                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                  {pfVal}
-                </div>
-                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                  cos φ
-                </div>
-              </div>
-            )}
-
-            {/* KVA (Apparent Power) */}
-            {showKVA && (
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-sky-300 transition-all text-center flex flex-col justify-between">
-                <div className="flex items-center justify-center gap-1 mb-0.5">
-                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-sky-50 text-sky-700 border border-sky-200">
-                    KVA
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    {getLabel("KVA", "Apparent Power")}
-                  </span>
-                </div>
-                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                  {kvaVal}
-                </div>
-                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                  kVA
-                </div>
-              </div>
-            )}
-
-            {/* KVAR (Reactive Power) */}
-            {showKVAR && (
-              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-fuchsia-300 transition-all text-center flex flex-col justify-between">
-                <div className="flex items-center justify-center gap-1 mb-0.5">
-                  <span className="text-[9px] font-mono font-black px-1 py-0.2 rounded bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200">
-                    KVAR
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    {getLabel("KVAR", "Reactive Power")}
-                  </span>
-                </div>
-                <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                  {kvarVal}
-                </div>
-                <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                  kVAR
-                </div>
-              </div>
-            )}
+              );
+            })}
           </div>
         </div>
       )}
@@ -962,6 +929,66 @@ const MachineTelemetryCard = ({
           )}
         </div>
       )}
+
+      {/* 4F. DYNAMIC ADDITIONAL GROUPS (Sensors, Custom Registers, etc.) */}
+      {additionalGroups.map((grp) => {
+        if (effectiveActiveTab !== `GRP_${grp}`) return null;
+        const groupItems = allTelemetryAddresses.filter(
+          (a) => a.group === grp && isVisible(a.key)
+        );
+        return (
+          <div key={grp}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  {grp}
+                </span>
+                <span className="text-[9px] font-mono text-slate-400 font-medium">
+                  [{groupItems.map((a) => a.key).join(", ")}]
+                </span>
+              </div>
+            </div>
+
+            <div
+              className={`grid gap-2 sm:gap-2.5 ${
+                groupItems.length === 1
+                  ? "grid-cols-1"
+                  : groupItems.length === 2
+                  ? "grid-cols-2"
+                  : groupItems.length === 3
+                  ? "grid-cols-3"
+                  : "grid-cols-2 sm:grid-cols-4"
+              }`}
+            >
+              {groupItems.map((item) => {
+                const val = formatRegisterVal(getRawVal(item.key));
+                const label = getLabel(item.key, item.name);
+                return (
+                  <div
+                    key={item.key}
+                    className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-center gap-1 mb-0.5">
+                      <span className={`text-[9px] font-mono font-black px-1 py-0.2 rounded border ${item.badgeColor || "bg-indigo-50 text-indigo-700 border-indigo-200"}`}>
+                        {item.key}
+                      </span>
+                      <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate" title={label}>
+                        {label}
+                      </span>
+                    </div>
+                    <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                      {val}
+                    </div>
+                    <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                      {item.unit || "--"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
 
       {/* Fallback when no addresses are selected for this machine */}
       {!showHero && availableTabs.length === 0 && (

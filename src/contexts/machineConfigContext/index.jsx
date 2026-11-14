@@ -1,12 +1,13 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { getDatabase, ref, onValue, set } from 'firebase/database';
 import { app } from '../../firebase/firebase';
-import { DEFAULT_ALL_ADDRESS_KEYS } from '../../constants/telemetryAddresses';
+import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from '../../constants/telemetryAddresses';
 
 const database = getDatabase(app);
 
 // Dedicated Firebase Realtime Database path for Power Monitor project (isolated from other projects)
 const POWER_CONFIG_PATH = 'power_app_config/machines';
+const CUSTOM_REGISTERS_PATH = 'power_app_config/custom_registers';
 
 // Dedicated baseline defaults for Power Monitoring machines
 export const DEFAULT_MACHINES_CONFIG = {
@@ -37,8 +38,49 @@ export const useMachineConfig = () => {
 
 export const MachineConfigProvider = ({ children }) => {
   const [machinesConfig, setMachinesConfig] = useState(DEFAULT_MACHINES_CONFIG);
+  const [customRegisters, setCustomRegisters] = useState({});
   const [isSyncedWithCloud, setIsSyncedWithCloud] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Subscribe to Firebase RTDB node `/power_app_config/custom_registers`
+  useEffect(() => {
+    const customRegRef = ref(database, CUSTOM_REGISTERS_PATH);
+    const unsubscribe = onValue(
+      customRegRef,
+      (snapshot) => {
+        const val = snapshot.val();
+        setCustomRegisters(val && typeof val === 'object' ? val : {});
+      },
+      (error) => {
+        console.error('Error fetching custom registers from Firebase:', error);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Combined list of built-in addresses + cloud custom registers
+  const allTelemetryAddresses = useMemo(() => {
+    const map = new Map();
+    ALL_TELEMETRY_ADDRESSES.forEach((item) => {
+      map.set(item.key, { ...item, isCustom: false });
+    });
+    Object.values(customRegisters || {}).forEach((item) => {
+      if (item && item.key) {
+        map.set(item.key, {
+          key: item.key,
+          name: item.name || item.key,
+          group: item.group || 'Custom Registers',
+          unit: item.unit || '',
+          badgeColor: item.badgeColor || 'bg-indigo-50 text-indigo-700 border-indigo-200',
+          isCustom: true,
+          createdAt: item.createdAt || null,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [customRegisters]);
+
+  const allAddressKeys = useMemo(() => allTelemetryAddresses.map((a) => a.key), [allTelemetryAddresses]);
 
   // Subscribe to Firebase RTDB node `/power_app_config/machines`
   useEffect(() => {
@@ -229,6 +271,35 @@ export const MachineConfigProvider = ({ children }) => {
     return await persistConfig(updatedConfig);
   };
 
+  // Add or update a custom telemetry register in Firebase RTDB
+  const addCustomRegister = async ({ key, name, unit, group }) => {
+    const cleanKey = (key || '').trim();
+    if (!cleanKey) throw new Error('Register key is required');
+
+    const regObj = {
+      key: cleanKey,
+      name: (name || '').trim() || cleanKey,
+      unit: (unit || '').trim(),
+      group: (group || '').trim() || 'Custom Registers',
+      badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      isCustom: true,
+      createdAt: Date.now()
+    };
+
+    const itemRef = ref(database, `${CUSTOM_REGISTERS_PATH}/${cleanKey}`);
+    await set(itemRef, regObj);
+    return { success: true };
+  };
+
+  // Remove a custom register from Firebase RTDB
+  const removeCustomRegister = async (regKey) => {
+    const cleanKey = (regKey || '').trim();
+    if (!cleanKey) return { success: false, error: 'No key provided' };
+    const itemRef = ref(database, `${CUSTOM_REGISTERS_PATH}/${cleanKey}`);
+    await set(itemRef, null);
+    return { success: true };
+  };
+
   // Reset a category back to original defaults
   const resetCategoryToDefault = async (categoryKey) => {
     const updatedConfig = {
@@ -254,12 +325,17 @@ export const MachineConfigProvider = ({ children }) => {
       machineNames: cat?.names || {},
       machineAddresses: cat?.addresses || {},
       machineCustomLabels: cat?.customLabels || {},
-      label: cat?.label || categoryKey
+      label: cat?.label || categoryKey,
+      allTelemetryAddresses,
+      allAddressKeys
     };
   };
 
   const value = {
     machinesConfig,
+    customRegisters,
+    allTelemetryAddresses,
+    allAddressKeys,
     isSyncedWithCloud,
     isLoading,
     addMachine,
@@ -268,7 +344,9 @@ export const MachineConfigProvider = ({ children }) => {
     removeMachine,
     resetCategoryToDefault,
     syncDefaultsToCloud,
-    getCategoryConfig
+    getCategoryConfig,
+    addCustomRegister,
+    removeCustomRegister
   };
 
   return (
