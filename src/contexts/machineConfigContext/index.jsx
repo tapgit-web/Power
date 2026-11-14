@@ -18,6 +18,9 @@ export const DEFAULT_MACHINES_CONFIG = {
     },
     addresses: {
       "1": DEFAULT_ALL_ADDRESS_KEYS
+    },
+    customLabels: {
+      "1": {}
     }
   }
 };
@@ -53,7 +56,8 @@ export const MachineConfigProvider = ({ children }) => {
               ? data[key].allowed
               : DEFAULT_MACHINES_CONFIG[key].allowed,
             names: data[key]?.names || DEFAULT_MACHINES_CONFIG[key].names,
-            addresses: data[key]?.addresses || DEFAULT_MACHINES_CONFIG[key].addresses || {}
+            addresses: data[key]?.addresses || DEFAULT_MACHINES_CONFIG[key].addresses || {},
+            customLabels: data[key]?.customLabels || DEFAULT_MACHINES_CONFIG[key].customLabels || {}
           };
         });
         // Include any additional custom categories configured in the cloud
@@ -63,7 +67,8 @@ export const MachineConfigProvider = ({ children }) => {
               label: data[key].label || key,
               allowed: Array.isArray(data[key].allowed) ? data[key].allowed : [],
               names: data[key].names || {},
-              addresses: data[key].addresses || {}
+              addresses: data[key].addresses || {},
+              customLabels: data[key].customLabels || {}
             };
           }
         });
@@ -107,6 +112,7 @@ export const MachineConfigProvider = ({ children }) => {
     const currentAllowed = currentCat.allowed || [];
     const currentNames = currentCat.names || {};
     const currentAddresses = currentCat.addresses || {};
+    const currentCustomLabels = currentCat.customLabels || {};
 
     const updatedAllowed = currentAllowed.includes(num)
       ? currentAllowed
@@ -124,13 +130,19 @@ export const MachineConfigProvider = ({ children }) => {
         : DEFAULT_ALL_ADDRESS_KEYS
     };
 
+    const updatedCustomLabels = {
+      ...currentCustomLabels,
+      [String(num)]: {}
+    };
+
     const updatedConfig = {
       ...machinesConfig,
       [categoryKey]: {
         ...currentCat,
         allowed: updatedAllowed,
         names: updatedNames,
-        addresses: updatedAddresses
+        addresses: updatedAddresses,
+        customLabels: updatedCustomLabels
       }
     };
 
@@ -159,29 +171,36 @@ export const MachineConfigProvider = ({ children }) => {
     return await persistConfig(updatedConfig);
   };
 
-  // Update selected register addresses for a machine
-  const updateMachineAddresses = async (categoryKey, machineNumber, addressKeys) => {
+  // Update selected register addresses and custom register labels for a machine
+  const updateMachineAddresses = async (categoryKey, machineNumber, addressKeys, customLabels = null) => {
     const num = parseInt(machineNumber, 10);
     const currentCat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG[categoryKey];
     const currentAddresses = currentCat.addresses || {};
+    const currentCustomLabels = currentCat.customLabels || {};
 
     const updatedAddresses = {
       ...currentAddresses,
       [String(num)]: Array.isArray(addressKeys) ? addressKeys : DEFAULT_ALL_ADDRESS_KEYS
     };
 
+    const updatedCustomLabels = {
+      ...currentCustomLabels,
+      ...(customLabels !== null ? { [String(num)]: customLabels } : {})
+    };
+
     const updatedConfig = {
       ...machinesConfig,
       [categoryKey]: {
         ...currentCat,
-        addresses: updatedAddresses
+        addresses: updatedAddresses,
+        customLabels: updatedCustomLabels
       }
     };
 
     return await persistConfig(updatedConfig);
   };
 
-  // Remove a machine from allowed list, names, and addresses
+  // Remove a machine from allowed list, names, addresses, and custom labels
   const removeMachine = async (categoryKey, machineNumber) => {
     const num = parseInt(machineNumber, 10);
     const currentCat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG[categoryKey];
@@ -193,13 +212,17 @@ export const MachineConfigProvider = ({ children }) => {
     const updatedAddresses = { ...(currentCat.addresses || {}) };
     delete updatedAddresses[String(num)];
 
+    const updatedCustomLabels = { ...(currentCat.customLabels || {}) };
+    delete updatedCustomLabels[String(num)];
+
     const updatedConfig = {
       ...machinesConfig,
       [categoryKey]: {
         ...currentCat,
         allowed: updatedAllowed,
         names: updatedNames,
-        addresses: updatedAddresses
+        addresses: updatedAddresses,
+        customLabels: updatedCustomLabels
       }
     };
 
@@ -230,6 +253,7 @@ export const MachineConfigProvider = ({ children }) => {
       allowedNumbers: cat?.allowed || [],
       machineNames: cat?.names || {},
       machineAddresses: cat?.addresses || {},
+      machineCustomLabels: cat?.customLabels || {},
       label: cat?.label || categoryKey
     };
   };

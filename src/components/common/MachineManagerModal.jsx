@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/authContext';
 import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from '../../constants/telemetryAddresses';
 
 export const MachineManagerModal = ({ isOpen, onClose }) => {
-  const { isAdmin } = useAuth();
+  const { userLoggedIn, isAdmin } = useAuth();
   const {
     machinesConfig,
     isSyncedWithCloud,
@@ -25,9 +25,10 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
   const [editingNameValue, setEditingNameValue] = useState('');
   const [feedback, setFeedback] = useState({ type: '', message: '' });
 
-  // Address selection modal state for a specific machine
+  // Address selection & custom name editing state for a specific machine
   const [configuringNumber, setConfiguringNumber] = useState(null);
   const [selectedAddressKeys, setSelectedAddressKeys] = useState([]);
+  const [customLabelMap, setCustomLabelMap] = useState({});
 
   // Ensure active category is valid when config changes
   useEffect(() => {
@@ -56,12 +57,13 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
     }
   }, [feedback]);
 
-  if (!isOpen || !isAdmin) return null;
+  if (!isOpen || !userLoggedIn) return null;
 
-  const currentCategoryData = machinesConfig[activeCategory] || { allowed: [], names: {}, addresses: {} };
+  const currentCategoryData = machinesConfig[activeCategory] || { allowed: [], names: {}, addresses: {}, customLabels: {} };
   const allowedList = currentCategoryData.allowed || [];
   const namesMap = currentCategoryData.names || {};
   const addressesMap = currentCategoryData.addresses || {};
+  const customLabelsMap = currentCategoryData.customLabels || {};
 
   const formatMachineCode = (num) => `MC_${String(num).padStart(3, '0')}`;
 
@@ -71,12 +73,33 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
     setSelectedAddressKeys(
       Array.isArray(existing) && existing.length > 0 ? existing : DEFAULT_ALL_ADDRESS_KEYS
     );
+    const existingLabels = customLabelsMap[String(num)] || {};
+    setCustomLabelMap({ ...existingLabels });
   };
 
   const handleToggleAddress = (key) => {
     setSelectedAddressKeys((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
+  };
+
+  const handleCustomLabelChange = (key, value) => {
+    setCustomLabelMap((prev) => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const handleResetSingleLabel = (key) => {
+    setCustomLabelMap((prev) => {
+      const copy = { ...prev };
+      delete copy[key];
+      return copy;
+    });
+  };
+
+  const handleResetAllLabels = () => {
+    setCustomLabelMap({});
   };
 
   const handleSelectAllAddresses = () => {
@@ -95,15 +118,24 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
     if (!configuringNumber) return;
     setIsSubmitting(true);
     try {
+      // Clean custom labels: only store non-empty strings
+      const cleanLabels = {};
+      Object.entries(customLabelMap).forEach(([k, v]) => {
+        if (typeof v === 'string' && v.trim()) {
+          cleanLabels[k] = v.trim();
+        }
+      });
+
       const res = await updateMachineAddresses(
         activeCategory,
         configuringNumber,
-        selectedAddressKeys
+        selectedAddressKeys,
+        cleanLabels
       );
       if (res.success) {
         setFeedback({
           type: 'success',
-          message: `Saved ${selectedAddressKeys.length} visible addresses for ${formatMachineCode(configuringNumber)}.`
+          message: `Saved visible addresses & custom names for ${formatMachineCode(configuringNumber)}.`
         });
         setConfiguringNumber(null);
       } else {
@@ -240,6 +272,9 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
           </div>
 
           <div className="flex items-center gap-3">
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-white/20 text-white uppercase tracking-wider">
+              {isAdmin ? "Admin" : "User"}
+            </span>
             {isSyncedWithCloud ? (
               <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-100 border border-emerald-400/30">
                 <span className="w-2 h-2 rounded-full bg-green-300 animate-pulse"></span>
@@ -577,37 +612,45 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                   <button
                     type="button"
                     onClick={handleSelectAllAddresses}
-                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-emerald-50 hover:text-emerald-700 font-semibold text-gray-700"
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-emerald-50 hover:text-emerald-700 font-semibold text-gray-700 cursor-pointer"
                   >
                     Select All (11)
                   </button>
                   <button
                     type="button"
                     onClick={handleClearAllAddresses}
-                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-red-50 hover:text-red-700 font-semibold text-gray-700"
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-red-50 hover:text-red-700 font-semibold text-gray-700 cursor-pointer"
                   >
                     Clear All
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSelectPreset(["R", "Y", "B", "RY", "YB", "BR"])}
-                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-indigo-50 hover:text-indigo-700 font-semibold text-gray-700"
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-indigo-50 hover:text-indigo-700 font-semibold text-gray-700 cursor-pointer"
                   >
                     Voltages Only (6)
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSelectPreset(["I1", "I2", "I3"])}
-                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-teal-50 hover:text-teal-700 font-semibold text-gray-700"
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-teal-50 hover:text-teal-700 font-semibold text-gray-700 cursor-pointer"
                   >
                     Currents Only (3)
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSelectPreset(["KWH", "Frequency"])}
-                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-emerald-50 hover:text-emerald-700 font-semibold text-gray-700"
+                    className="px-2 py-1 rounded-md bg-white border border-gray-300 hover:bg-emerald-50 hover:text-emerald-700 font-semibold text-gray-700 cursor-pointer"
                   >
                     Energy & Grid (2)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetAllLabels}
+                    className="px-2 py-1 rounded-md bg-white border border-amber-300 hover:bg-amber-50 hover:text-amber-800 font-semibold text-amber-700 cursor-pointer"
+                    title="Reset all custom names back to default"
+                  >
+                    Reset Names
                   </button>
                 </div>
                 <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full">
@@ -615,7 +658,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                 </span>
               </div>
 
-              {/* Address Checkbox List grouped by Category */}
+              {/* Address List with Editable Additional Names grouped by Category */}
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                 {["Energy & Frequency", "Phase Voltages (VLN)", "Line Voltages (VLL)", "Phase Currents (I)"].map((groupName) => {
                   const groupAddresses = ALL_TELEMETRY_ADDRESSES.filter((a) => a.group === groupName);
@@ -623,7 +666,7 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
 
                   return (
                     <div key={groupName} className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-2.5">
                         <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                           {groupName}
@@ -648,39 +691,65 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         {groupAddresses.map((item) => {
                           const isChecked = selectedAddressKeys.includes(item.key);
+                          const customVal = customLabelMap[item.key];
+                          const isCustomized = customVal !== undefined && customVal.trim() !== "" && customVal !== item.name;
 
                           return (
-                            <label
+                            <div
                               key={item.key}
-                              className={`flex items-center gap-2.5 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                              className={`flex flex-col p-2.5 rounded-xl border text-xs transition-all ${
                                 isChecked
-                                  ? "bg-white border-emerald-500 shadow-xs"
-                                  : "bg-white/60 border-slate-200 text-slate-400 opacity-70 hover:opacity-100"
+                                  ? "bg-white border-emerald-500 shadow-xs ring-1 ring-emerald-500/20"
+                                  : "bg-slate-100/70 border-slate-200 text-slate-400 opacity-80"
                               }`}
                             >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => handleToggleAddress(item.key)}
-                                className="w-4 h-4 text-emerald-600 rounded-sm focus:ring-emerald-500 cursor-pointer"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1">
+                              <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => handleToggleAddress(item.key)}
+                                    className="w-4 h-4 text-emerald-600 rounded-sm focus:ring-emerald-500 cursor-pointer"
+                                  />
                                   <span className={`px-1.5 py-0.2 rounded font-mono font-bold text-[10px] border ${item.badgeColor}`}>
                                     {item.key}
                                   </span>
-                                  <span className="font-semibold text-slate-900 truncate">
-                                    {item.name}
+                                </label>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-slate-400 font-semibold">
+                                    {item.unit}
                                   </span>
+                                  {isCustomized && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleResetSingleLabel(item.key)}
+                                      title="Reset to default name"
+                                      className="text-[10px] font-bold text-amber-600 hover:text-rose-600 hover:underline cursor-pointer"
+                                    >
+                                      Reset
+                                    </button>
+                                  )}
                                 </div>
-                                <span className="text-[10px] text-slate-400 block font-medium">
-                                  Unit: {item.unit}
-                                </span>
                               </div>
-                            </label>
+
+                              <div className="mt-0.5">
+                                <input
+                                  type="text"
+                                  value={customVal !== undefined ? customVal : item.name}
+                                  onChange={(e) => handleCustomLabelChange(item.key, e.target.value)}
+                                  placeholder={item.name}
+                                  className={`w-full text-xs font-semibold px-2 py-1 rounded border transition-colors outline-hidden ${
+                                    isCustomized
+                                      ? "bg-emerald-50/70 border-emerald-300 text-emerald-950 font-bold"
+                                      : "bg-white border-slate-200 text-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400"
+                                  }`}
+                                  title="Edit additional name for this register"
+                                />
+                              </div>
+                            </div>
                           );
                         })}
                       </div>

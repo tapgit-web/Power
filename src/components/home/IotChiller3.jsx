@@ -29,9 +29,15 @@ const MachineTelemetryCard = ({
   locationName,
   latestRecord,
   selectedAddresses = DEFAULT_ALL_ADDRESS_KEYS,
+  customLabels = {},
 }) => {
   const isVisible = (key) =>
     Array.isArray(selectedAddresses) ? selectedAddresses.includes(key) : true;
+
+  const getLabel = (key, defaultName) => {
+    const custom = customLabels?.[key];
+    return custom && custom.trim() ? custom.trim() : defaultName;
+  };
 
   const showKwh = isVisible("KWH");
   const showFreq = isVisible("Frequency");
@@ -215,7 +221,7 @@ const MachineTelemetryCard = ({
                     KWH
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-                    Active Energy
+                    {getLabel("KWH", "Active Energy")}
                   </span>
                 </div>
                 <div className="flex items-baseline gap-1 mt-0.5">
@@ -241,7 +247,7 @@ const MachineTelemetryCard = ({
                     Frequency
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-teal-300">
-                    Grid Frequency
+                    {getLabel("Frequency", "Grid Frequency")}
                   </span>
                 </div>
                 <div className="flex items-baseline gap-1 mt-0.5">
@@ -325,7 +331,7 @@ const MachineTelemetryCard = ({
                     R
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Phase R
+                    {getLabel("R", "Phase R")}
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -346,7 +352,7 @@ const MachineTelemetryCard = ({
                     Y
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Phase Y
+                    {getLabel("Y", "Phase Y")}
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -367,7 +373,7 @@ const MachineTelemetryCard = ({
                     B
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Phase B
+                    {getLabel("B", "Phase B")}
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -418,7 +424,7 @@ const MachineTelemetryCard = ({
                     RY
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Line R-Y
+                    {getLabel("RY", "Line R-Y")}
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -438,7 +444,7 @@ const MachineTelemetryCard = ({
                     YB
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Line Y-B
+                    {getLabel("YB", "Line Y-B")}
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -458,7 +464,7 @@ const MachineTelemetryCard = ({
                     BR
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Line B-R
+                    {getLabel("BR", "Line B-R")}
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -509,7 +515,7 @@ const MachineTelemetryCard = ({
                     I1
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Current R
+                    {getLabel("I1", "Current R")}
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -529,7 +535,7 @@ const MachineTelemetryCard = ({
                     I2
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Current Y
+                    {getLabel("I2", "Current Y")}
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -549,7 +555,7 @@ const MachineTelemetryCard = ({
                     I3
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                    Current B
+                    {getLabel("I3", "Current B")}
                   </span>
                 </div>
                 <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -612,7 +618,7 @@ const MachineTelemetryCard = ({
                       R
                     </span>
                     <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                      Voltage
+                      {getLabel("R", "Voltage")}
                     </span>
                   </div>
                   <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -632,7 +638,7 @@ const MachineTelemetryCard = ({
                       I1
                     </span>
                     <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                      Current
+                      {getLabel("I1", "Current")}
                     </span>
                   </div>
                   <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -652,7 +658,7 @@ const MachineTelemetryCard = ({
                       Freq
                     </span>
                     <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                      Frequency
+                      {getLabel("Frequency", "Frequency")}
                     </span>
                   </div>
                   <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -686,7 +692,7 @@ const MachineTelemetryCard = ({
                       Y
                     </span>
                     <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                      Voltage
+                      {getLabel("Y", "Voltage")}
                     </span>
                   </div>
                   <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -706,7 +712,7 @@ const MachineTelemetryCard = ({
                       I2
                     </span>
                     <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                      Current
+                      {getLabel("I2", "Current")}
                     </span>
                   </div>
                   <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -726,7 +732,7 @@ const MachineTelemetryCard = ({
                       Freq
                     </span>
                     <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                      Frequency
+                      {getLabel("Frequency", "Frequency")}
                     </span>
                   </div>
                   <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -760,7 +766,7 @@ const MachineTelemetryCard = ({
                       B
                     </span>
                     <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                      Voltage
+                      {getLabel("B", "Voltage")}
                     </span>
                   </div>
                   <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -780,7 +786,7 @@ const MachineTelemetryCard = ({
                       I3
                     </span>
                     <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                      Current
+                      {getLabel("I3", "Current")}
                     </span>
                   </div>
                   <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -800,7 +806,7 @@ const MachineTelemetryCard = ({
                       Freq
                     </span>
                     <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">
-                      Frequency
+                      {getLabel("Frequency", "Frequency")}
                     </span>
                   </div>
                   <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
@@ -831,7 +837,7 @@ const MachineTelemetryCard = ({
 
 export const Iot_chiller = ({ searchQuery = "" }) => {
   const { getCategoryConfig } = useMachineConfig();
-  const { allowedNumbers, machineNames, machineAddresses } = getCategoryConfig("power_meters");
+  const { allowedNumbers, machineNames, machineAddresses, machineCustomLabels } = getCategoryConfig("power_meters");
 
   const [machineKeys, setMachineKeys] = useState([]);
   const [allMachineData, setAllMachineData] = useState({});
@@ -1086,6 +1092,11 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
               ? rawSelected
               : DEFAULT_ALL_ADDRESS_KEYS;
 
+            const customLabels =
+              machineCustomLabels?.[String(machineNumber)] ||
+              machineCustomLabels?.[machineNumber] ||
+              {};
+
             return (
               <MachineTelemetryCard
                 key={machine}
@@ -1093,6 +1104,7 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
                 locationName={locationName}
                 latestRecord={latestRecord}
                 selectedAddresses={selectedAddresses}
+                customLabels={customLabels}
               />
             );
           })}
