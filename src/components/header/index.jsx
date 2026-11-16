@@ -6,7 +6,7 @@ import { MachineManagerModal } from '../common/MachineManagerModal'
 
 const Header = () => {
     const navigate = useNavigate()
-    const { userLoggedIn, currentUser, isAdmin } = useAuth()
+    const { userLoggedIn, currentUser } = useAuth()
     const [isMachineModalOpen, setIsMachineModalOpen] = useState(false)
 
     // Avoid rendering nav until login state is determined
@@ -81,7 +81,7 @@ const Header = () => {
                 </div>
             </nav>
 
-            {isAdmin && (
+            {userLoggedIn && (
                 <MachineManagerModal
                     isOpen={isMachineModalOpen}
                     onClose={() => setIsMachineModalOpen(false)}

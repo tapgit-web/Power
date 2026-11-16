@@ -1005,7 +1005,7 @@ const MachineTelemetryCard = ({
 
 export const Iot_chiller = ({ searchQuery = "" }) => {
   const { getCategoryConfig } = useMachineConfig();
-  const { allowedNumbers, machineNames, machineAddresses, machineCustomLabels } = getCategoryConfig("power_meters");
+  const { allowedNumbers, machineNames, machineAddresses, machineCustomLabels, allAddressKeys } = getCategoryConfig("power_meters");
 
   const [machineKeys, setMachineKeys] = useState([]);
   const [allMachineData, setAllMachineData] = useState({});
@@ -1076,6 +1076,10 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
             obj.KWH !== undefined ||
             obj.kwh !== undefined ||
             obj.Frequency !== undefined ||
+            obj.W !== undefined ||
+            obj.w !== undefined ||
+            obj.PF !== undefined ||
+            obj.pf !== undefined ||
             obj.values !== undefined);
 
         // Normalize device data into an array of items
@@ -1259,7 +1263,7 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
               machineAddresses?.[machineNumber];
             const selectedAddresses = Array.isArray(rawSelected)
               ? rawSelected
-              : DEFAULT_ALL_ADDRESS_KEYS;
+              : allAddressKeys || DEFAULT_ALL_ADDRESS_KEYS;
 
             const customLabels =
               machineCustomLabels?.[String(machineNumber)] ||
