@@ -132,14 +132,6 @@ const MachineTelemetryCard = ({
       label: "VAF",
       sub: "V · A · F",
     },
-    ...additionalGroups.map((grp) => ({
-      id: `GRP_${grp}`,
-      label: grp,
-      sub: allTelemetryAddresses
-        .filter((a) => a.group === grp && isVisible(a.key))
-        .map((a) => a.key)
-        .join(", "),
-    })),
   ].filter(Boolean);
 
   const [activeTab, setActiveTab] = useState("VLN");
@@ -930,65 +922,78 @@ const MachineTelemetryCard = ({
         </div>
       )}
 
-      {/* 4F. DYNAMIC ADDITIONAL GROUPS (Sensors, Custom Registers, etc.) */}
-      {additionalGroups.map((grp) => {
-        if (effectiveActiveTab !== `GRP_${grp}`) return null;
-        const groupItems = allTelemetryAddresses.filter(
-          (a) => a.group === grp && isVisible(a.key)
-        );
-        return (
-          <div key={grp}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                  {grp}
-                </span>
-                <span className="text-[9px] font-mono text-slate-400 font-medium">
-                  [{groupItems.map((a) => a.key).join(", ")}]
-                </span>
-              </div>
-            </div>
+      {/* 5. Additional / Other Section (Displayed after the active tab in the empty space) */}
+      {additionalGroups.length > 0 && (
+        <div className="mt-4 pt-3.5 border-t border-slate-100 space-y-3.5">
+          {additionalGroups.map((grp) => {
+            const groupItems = allTelemetryAddresses.filter(
+              (a) => a.group === grp && isVisible(a.key)
+            );
+            if (groupItems.length === 0) return null;
 
-            <div
-              className={`grid gap-2 sm:gap-2.5 ${
-                groupItems.length === 1
-                  ? "grid-cols-1"
-                  : groupItems.length === 2
-                  ? "grid-cols-2"
-                  : groupItems.length === 3
-                  ? "grid-cols-3"
-                  : "grid-cols-2 sm:grid-cols-4"
-              }`}
-            >
-              {groupItems.map((item) => {
-                const val = formatRegisterVal(getRawVal(item.key));
-                const label = getLabel(item.key, item.name);
-                return (
-                  <div
-                    key={item.key}
-                    className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-indigo-300 transition-all text-center flex flex-col justify-between"
-                  >
-                    <div className="flex items-center justify-center gap-1 mb-0.5">
-                      <span className={`text-[9px] font-mono font-black px-1 py-0.2 rounded border ${item.badgeColor || "bg-indigo-50 text-indigo-700 border-indigo-200"}`}>
-                        {item.key}
-                      </span>
-                      <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate" title={label}>
-                        {label}
-                      </span>
-                    </div>
-                    <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
-                      {val}
-                    </div>
-                    <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
-                      {item.unit || "--"}
-                    </div>
+            return (
+              <div key={grp}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                      {grp}
+                    </span>
+                    <span className="text-[9px] font-mono text-slate-400 font-medium">
+                      [{groupItems.map((a) => a.key).join(", ")}]
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+                </div>
+
+                <div
+                  className={`grid gap-2 sm:gap-2.5 ${
+                    groupItems.length === 1
+                      ? "grid-cols-1"
+                      : groupItems.length === 2
+                      ? "grid-cols-2"
+                      : groupItems.length === 3
+                      ? "grid-cols-3"
+                      : "grid-cols-2 sm:grid-cols-4"
+                  }`}
+                >
+                  {groupItems.map((item) => {
+                    const val = formatRegisterVal(getRawVal(item.key));
+                    const label = getLabel(item.key, item.name);
+                    return (
+                      <div
+                        key={item.key}
+                        className="p-2 sm:p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-emerald-300 transition-all text-center flex flex-col justify-between"
+                      >
+                        <div className="flex items-center justify-center gap-1 mb-0.5">
+                          <span
+                            className={`text-[9px] font-mono font-black px-1 py-0.2 rounded border ${
+                              item.badgeColor || "bg-indigo-50 text-indigo-700 border-indigo-200"
+                            }`}
+                          >
+                            {item.key}
+                          </span>
+                          <span
+                            className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate"
+                            title={label}
+                          >
+                            {label}
+                          </span>
+                        </div>
+                        <div className="text-base sm:text-xl font-telemetry font-bold text-slate-900 my-0.5">
+                          {val}
+                        </div>
+                        <div className="text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                          {item.unit || "--"}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Fallback when no addresses are selected for this machine */}
       {!showHero && availableTabs.length === 0 && (
