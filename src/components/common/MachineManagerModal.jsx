@@ -39,6 +39,8 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
   const [newRegName, setNewRegName] = useState('');
   const [newRegUnit, setNewRegUnit] = useState('');
   const [newRegGroup, setNewRegGroup] = useState('Power Metrics');
+  const [isCustomGroup, setIsCustomGroup] = useState(false);
+  const [customGroupName, setCustomGroupName] = useState('');
   const [isSavingRegister, setIsSavingRegister] = useState(false);
 
   // Ensure active category is valid when config changes
@@ -134,23 +136,26 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
       setFeedback({ type: 'error', message: 'Please enter a register key to read from Firebase.' });
       return;
     }
+    const targetGroup = (isCustomGroup ? customGroupName : newRegGroup).trim() || 'Power Metrics';
     setIsSavingRegister(true);
     try {
       await addCustomRegister({
         key: cleanKey,
         name: newRegName.trim() || cleanKey,
         unit: newRegUnit.trim(),
-        group: newRegGroup.trim() || 'Power Metrics'
+        group: targetGroup
       });
       // Automatically enable this register for the current machine
       setSelectedAddressKeys((prev) => (prev.includes(cleanKey) ? prev : [...prev, cleanKey]));
       setFeedback({
         type: 'success',
-        message: `Register "${cleanKey}" added successfully! It is now readable from Firebase.`
+        message: `Register "${cleanKey}" added under group "${targetGroup}" successfully!`
       });
       setNewRegKey('');
       setNewRegName('');
       setNewRegUnit('');
+      setCustomGroupName('');
+      setIsCustomGroup(false);
       setShowAddRegisterForm(false);
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Failed to add register.' });
@@ -217,6 +222,20 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
       name.includes(query)
     );
   });
+
+  // All available groups (existing groups + presets)
+  const existingGroups = Array.from(
+    new Set([
+      "Power Metrics",
+      "Energy & Frequency",
+      "Phase Voltages (VLN)",
+      "Line Voltages (VLL)",
+      "Phase Currents (I)",
+      "Sensors & Temperature",
+      "Custom Registers",
+      ...allTelemetryAddresses.map((a) => a.group)
+    ].filter(Boolean))
+  );
 
   const handleAddSubmit = async (e) => {
     e.preventDefault();
@@ -797,29 +816,43 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                         <span className="text-[9px] text-slate-500">Measurement unit</span>
                       </div>
 
-                      {/* Group */}
+                      {/* Group Selector */}
                       <div>
                         <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                           Group
                         </label>
-                        <input
-                          type="text"
-                          value={newRegGroup}
-                          onChange={(e) => setNewRegGroup(e.target.value)}
-                          placeholder="Power Metrics"
-                          list="group-presets"
-                          className="w-full text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none text-slate-800"
-                        />
-                        <datalist id="group-presets">
-                          <option value="Power Metrics" />
-                          <option value="Energy & Frequency" />
-                          <option value="Phase Voltages (VLN)" />
-                          <option value="Line Voltages (VLL)" />
-                          <option value="Phase Currents (I)" />
-                          <option value="Sensors & Temperature" />
-                          <option value="Custom Registers" />
-                        </datalist>
-                        <span className="text-[9px] text-slate-500">Category section</span>
+                        <select
+                          value={isCustomGroup ? "__custom__" : newRegGroup}
+                          onChange={(e) => {
+                            if (e.target.value === "__custom__") {
+                              setIsCustomGroup(true);
+                            } else {
+                              setIsCustomGroup(false);
+                              setNewRegGroup(e.target.value);
+                            }
+                          }}
+                          className="w-full text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none text-slate-800 cursor-pointer"
+                        >
+                          {existingGroups.map((grp) => (
+                            <option key={grp} value={grp}>
+                              {grp}
+                            </option>
+                          ))}
+                          <option value="__custom__">➕ + Add New Custom Group...</option>
+                        </select>
+                        {isCustomGroup ? (
+                          <input
+                            type="text"
+                            value={customGroupName}
+                            onChange={(e) => setCustomGroupName(e.target.value)}
+                            placeholder="Type new group name"
+                            className="mt-1.5 w-full text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-emerald-400 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 outline-none text-slate-800"
+                            autoFocus
+                            required
+                          />
+                        ) : (
+                          <span className="text-[9px] text-slate-500">Category section</span>
+                        )}
                       </div>
                     </div>
 
