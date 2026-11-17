@@ -23,6 +23,7 @@ export const UserManagerModal = ({ isOpen, onClose }) => {
 
   // Form states for editing existing user
   const [editingEmail, setEditingEmail] = useState(null);
+  const [editRole, setEditRole] = useState('user');
   const [editAllMachines, setEditAllMachines] = useState(false);
   const [editSelectedMachines, setEditSelectedMachines] = useState([]);
 
@@ -88,6 +89,7 @@ export const UserManagerModal = ({ isOpen, onClose }) => {
 
   const handleStartEdit = (user) => {
     setEditingEmail(user.email);
+    setEditRole(user.role || 'user');
     setEditAllMachines(user.allMachines || user.role === 'admin');
     setEditSelectedMachines(
       Array.isArray(user.assignedMachines) ? [...user.assignedMachines] : []
@@ -103,9 +105,9 @@ export const UserManagerModal = ({ isOpen, onClose }) => {
     try {
       await saveUserPermissions({
         email: editingEmail,
-        role: usersMap[editingEmail.replace(/[.#$[\]]/g, '_')]?.role || 'user',
-        allMachines: editAllMachines,
-        assignedMachines: editAllMachines ? allAllowedNumbers : editSelectedMachines,
+        role: editRole,
+        allMachines: editAllMachines || editRole === 'admin',
+        assignedMachines: editAllMachines || editRole === 'admin' ? allAllowedNumbers : editSelectedMachines,
       });
 
       setFeedback({
@@ -355,10 +357,14 @@ export const UserManagerModal = ({ isOpen, onClose }) => {
                     </label>
                     <select
                       value={newRole}
-                      onChange={(e) => setNewRole(e.target.value)}
+                      onChange={(e) => {
+                        setNewRole(e.target.value);
+                        if (e.target.value === 'admin') setNewAllMachines(true);
+                      }}
                       className="w-full px-3 py-2 rounded-xl border border-gray-300 bg-white text-xs text-gray-800 focus:outline-none focus:border-emerald-500"
                     >
                       <option value="user">Standard User (View Assigned Only)</option>
+                      <option value="user_editor">Standard User (View Assigned and editable reg address name)</option>
                       <option value="admin">Administrator (Full Access)</option>
                     </select>
                   </div>
@@ -515,10 +521,12 @@ export const UserManagerModal = ({ isOpen, onClose }) => {
                                 className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                                   isUserAdmin
                                     ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                                    : user.role === 'user_editor'
+                                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
                                     : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                 }`}
                               >
-                                {isUserAdmin ? 'Admin' : 'User'}
+                                {isUserAdmin ? 'Admin' : user.role === 'user_editor' ? 'Editor' : 'User'}
                               </span>
                               {user.isDefaultAdmin && (
                                 <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 font-medium">
@@ -527,9 +535,11 @@ export const UserManagerModal = ({ isOpen, onClose }) => {
                               )}
                             </div>
                             <span className="text-[11px] text-gray-500">
-                              {isAllMachines
-                                ? 'Access: All Machines'
-                                : `Access: ${assigned.length} of ${allAllowedNumbers.length} machines`}
+                              {isUserAdmin
+                                ? 'Full Administrative Access'
+                                : user.role === 'user_editor'
+                                ? `Can view & edit register names for ${isAllMachines ? 'all machines' : `${assigned.length} machines`}`
+                                : `View only: ${isAllMachines ? 'all machines' : `${assigned.length} machines`}`}
                             </span>
                           </div>
                         </div>
@@ -598,6 +608,26 @@ export const UserManagerModal = ({ isOpen, onClose }) => {
                       {/* Inline Machine Editor */}
                       {isEditing && (
                         <div className="mt-3 p-3.5 bg-slate-50 rounded-xl border border-emerald-200 animate-fadeIn">
+                          {/* Role Selector in Inline Editor */}
+                          <div className="mb-3 pb-2.5 border-b border-gray-200">
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">
+                              Account Role
+                            </label>
+                            <select
+                              value={editRole}
+                              disabled={user.isDefaultAdmin}
+                              onChange={(e) => {
+                                setEditRole(e.target.value);
+                                if (e.target.value === 'admin') setEditAllMachines(true);
+                              }}
+                              className="w-full sm:w-auto px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-xs text-gray-800 focus:outline-none focus:border-emerald-500"
+                            >
+                              <option value="user">Standard User (View Assigned Only)</option>
+                              <option value="user_editor">Standard User (View Assigned and editable reg address name)</option>
+                              <option value="admin">Administrator (Full Access)</option>
+                            </select>
+                          </div>
+
                           <div className="flex items-center justify-between mb-2">
                             <label className="flex items-center gap-1.5 text-xs text-emerald-900 font-bold cursor-pointer">
                               <input

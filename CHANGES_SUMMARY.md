@@ -54,10 +54,22 @@ Stores user roles, access flags, and assigned machine numbers.
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `email` | `string` | User's email address. |
-| `role` | `"admin" \| "user"` | Access role. |
+| `role` | `"admin" \| "user_editor" \| "user"` | Access role (`admin`, `user_editor`, or `user`). |
 | `assignedMachines` | `number[]` | Array of integer machine IDs (e.g. `[1, 3]` maps to `MC_001` and `MC_003`). |
 | `allMachines` | `boolean` | If `true`, the user can view all machines regardless of list. |
 | `updatedAt` | `number` | Unix timestamp of last assignment change. |
+
+### The 3 User Access Roles:
+1. **`user` — Standard User (View Assigned Only)**:
+   - Dashboard is filtered to show **only assigned machines**.
+   - Read-only: Settings button is hidden; cannot modify register display names or machines.
+2. **`user_editor` — Standard User (View Assigned and editable reg address name)**:
+   - Dashboard is filtered to show **only assigned machines**.
+   - **Can open Settings** to configure visible registers and edit **custom display names / labels** for their assigned machines.
+   - Protected: Cannot add new machines, delete machines, or reset categories.
+3. **`admin` — Administrator (Full Access)**:
+   - Unrestricted access to all machines across the plant.
+   - Can add, delete, rename machines, and manage users & machine assignments.
 
 ### B. Sanitizing Email Keys for RTDB
 Firebase keys cannot contain characters like `.` or `@`. Use this helper function:

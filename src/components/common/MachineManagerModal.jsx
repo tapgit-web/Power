@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/authContext';
 import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from '../../constants/telemetryAddresses';
 
 export const MachineManagerModal = ({ isOpen, onClose }) => {
-  const { userLoggedIn, isAdmin } = useAuth();
+  const { userLoggedIn, isAdmin, canEditRegisterNames, assignedMachines } = useAuth();
   const {
     machinesConfig,
     isSyncedWithCloud,
@@ -73,7 +73,12 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
   if (!isOpen || !userLoggedIn) return null;
 
   const currentCategoryData = machinesConfig[activeCategory] || { allowed: [], names: {}, addresses: {}, customLabels: {} };
-  const allowedList = currentCategoryData.allowed || [];
+  const rawAllowed = currentCategoryData.allowed || [];
+  const allowedList = isAdmin
+    ? rawAllowed
+    : Array.isArray(assignedMachines)
+    ? rawAllowed.filter((num) => assignedMachines.includes(num))
+    : rawAllowed;
   const namesMap = currentCategoryData.names || {};
   const addressesMap = currentCategoryData.addresses || {};
   const customLabelsMap = currentCategoryData.customLabels || {};
@@ -350,22 +355,24 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
 
           <div className="flex items-center gap-3">
             <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-white/20 text-white uppercase tracking-wider">
-              {isAdmin ? "Admin" : "User"}
+              {isAdmin ? "Admin" : canEditRegisterNames ? "Editor" : "User"}
             </span>
-            {isSyncedWithCloud ? (
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-100 border border-emerald-400/30">
-                <span className="w-2 h-2 rounded-full bg-green-300 animate-pulse"></span>
-                Cloud Synced
-              </span>
-            ) : (
-              <button
-                onClick={handleSyncToCloud}
-                disabled={isSubmitting}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/30 text-amber-100 hover:bg-amber-500/40 border border-amber-300/40 transition-colors"
-                title="Initialize Firebase cloud node with current defaults"
-              >
-                ☁️ Save Defaults to Cloud
-              </button>
+            {isAdmin && (
+              isSyncedWithCloud ? (
+                <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-100 border border-emerald-400/30">
+                  <span className="w-2 h-2 rounded-full bg-green-300 animate-pulse"></span>
+                  Cloud Synced
+                </span>
+              ) : (
+                <button
+                  onClick={handleSyncToCloud}
+                  disabled={isSubmitting}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/30 text-amber-100 hover:bg-amber-500/40 border border-amber-300/40 transition-colors"
+                  title="Initialize Firebase cloud node with current defaults"
+                >
+                  ☁️ Save Defaults to Cloud
+                </button>
+              )
             )}
 
             <button
@@ -409,13 +416,15 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
             })}
           </div>
 
-          <button
-            onClick={handleResetCategory}
-            className="text-xs text-gray-500 hover:text-red-600 font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
-            title="Reset this category to default hardcoded machines"
-          >
-            Reset to Defaults
-          </button>
+          {isAdmin && (
+            <button
+              onClick={handleResetCategory}
+              className="text-xs text-gray-500 hover:text-red-600 font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+              title="Reset this category to default hardcoded machines"
+            >
+              Reset to Defaults
+            </button>
+          )}
         </div>
 
         {/* Feedback Alert */}
@@ -432,70 +441,72 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
 
         {/* Modal Scrollable Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {/* Add New Machine Card */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-emerald-50/50 via-green-50/20 to-white border border-emerald-100 shadow-sm">
-            <h3 className="text-sm font-bold text-emerald-950 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Add New Machine to {currentCategoryData.label}
-            </h3>
+          {/* Add New Machine Card (Admin Only) */}
+          {isAdmin && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-emerald-50/50 via-green-50/20 to-white border border-emerald-100 shadow-sm">
+              <h3 className="text-sm font-bold text-emerald-950 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                Add New Machine to {currentCategoryData.label}
+              </h3>
 
-            <form onSubmit={handleAddSubmit} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-              {/* Machine Number */}
-              <div className="sm:col-span-4">
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Machine Number (ID) <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-xs font-bold text-gray-400 select-none">
-                    MC_
-                  </span>
+              <form onSubmit={handleAddSubmit} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                {/* Machine Number */}
+                <div className="sm:col-span-4">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Machine Number (ID) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-xs font-bold text-gray-400 select-none">
+                      MC_
+                    </span>
+                    <input
+                      type="number"
+                      placeholder="e.g. 1 or 001"
+                      value={machineNumber}
+                      onChange={(e) => setMachineNumber(e.target.value)}
+                      required
+                      min="1"
+                      className="w-full pl-14 pr-3 py-2 text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all shadow-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Machine Name / Location */}
+                <div className="sm:col-span-5">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Location / Machine Name
+                  </label>
                   <input
-                    type="number"
-                    placeholder="e.g. 1 or 001"
-                    value={machineNumber}
-                    onChange={(e) => setMachineNumber(e.target.value)}
-                    required
-                    min="1"
-                    className="w-full pl-14 pr-3 py-2 text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all shadow-sm"
+                    type="text"
+                    placeholder="e.g. Ranipet, Hyderabad-2"
+                    value={machineName}
+                    onChange={(e) => setMachineName(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all shadow-sm"
                   />
                 </div>
-              </div>
 
-              {/* Machine Name / Location */}
-              <div className="sm:col-span-5">
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Location / Machine Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Ranipet, Hyderabad-2"
-                  value={machineName}
-                  onChange={(e) => setMachineName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all shadow-sm"
-                />
-              </div>
-
-              {/* Add Button */}
-              <div className="sm:col-span-3">
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md shadow-emerald-600/30 transition-all duration-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {isSubmitting ? (
-                    <span>Saving...</span>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                      </svg>
-                      <span>Add Machine</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
+                {/* Add Button */}
+                <div className="sm:col-span-3">
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md shadow-emerald-600/30 transition-all duration-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {isSubmitting ? (
+                      <span>Saving...</span>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        <span>Add Machine</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
 
           {/* Machine List Section */}
           <div>
@@ -569,15 +580,17 @@ export const MachineManagerModal = ({ isOpen, onClose }) => {
                             )}
                           </button>
 
-                          <button
-                            onClick={() => handleRemove(num)}
-                            className="p-1 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            title="Remove Machine"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleRemove(num)}
+                              className="p-1 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              title="Remove Machine"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </div>
 

@@ -75,6 +75,9 @@ export function AuthProvider({ children }) {
     ? isUserAdmin(currentUser) || userProfile?.role === "admin"
     : false;
 
+  const canEditRegisterNames =
+    isAdmin || userProfile?.role === "user_editor";
+
   // If user is admin or allMachines is true, assignedMachines is null (meaning unrestricted/all)
   // Otherwise, returns the array of machine numbers (e.g. [1, 2])
   const assignedMachines =
@@ -90,6 +93,7 @@ export function AuthProvider({ children }) {
     currentUser,
     setCurrentUser,
     isAdmin,
+    canEditRegisterNames,
     userProfile,
     assignedMachines,
   };
