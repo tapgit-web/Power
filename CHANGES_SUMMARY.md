@@ -1,48 +1,54 @@
-# THE MONITOR — Technical Changes & Feature Update Guide
+# THE MONITOR — Technical Changes & Flutter Integration Guide
 
-> **Document Purpose**: This document summarizes all architectural updates, database structures, authentication logic, and component additions made to the **Power Monitoring** system. Use this guide to sync changes with teammates working on native mobile APK or web versions.
+> **Document Purpose**: This document summarizes all architectural updates, Firebase database schemas, authentication workflows, and screen logic made to the **Power Monitoring** system. Use this guide to implement or sync these exact features into the **Flutter Android APK** app.
 
 ---
 
 ## 1. Executive Summary of Updates
 
 1. **User Management & Per-User Machine Assignment**:
-   - Administrators can now create new users directly from the UI without getting logged out.
-   - Administrators can assign specific machines (e.g. `MC_001`, `MC_002`) to individual users.
+   - Administrators can create new operator/user accounts directly within the app without losing their active login session.
+   - Administrators can assign specific machines (e.g. `MC_001`, `MC_002`) to each user.
    - Standard users only see their assigned machines on their dashboard.
-2. **Firebase Realtime Database Schema Expansion**:
-   - New root node `/power_app_users` stores user roles and per-user machine assignment lists.
-   - Email addresses are sanitized for RTDB key compatibility (converting `.`, `#`, `$`, `[`, `]` to `_`).
-3. **Dynamic Custom Groups & Telemetry Layout**:
+2. **Three Distinct Account Roles**:
+   - `user`: Standard User (View Assigned Only) — Read-only telemetry, Settings button hidden.
+   - `user_editor`: Standard User (View Assigned & Editable Reg Names) — Telemetry filtered to assigned machines, can open Settings to edit register display names and custom labels, cannot add or delete machines.
+   - `admin`: Administrator (Full Access) — Unrestricted view of all machines, add/delete machines, and user management.
+3. **Firebase Realtime Database Schema (`/power_app_users`)**:
+   - Stores user roles, machine assignment arrays, and access flags under sanitized email keys.
+4. **Dynamic Custom Groups & Telemetry Layout**:
    - Telemetry registers support custom categories/groups (e.g. `ONE`, `Sensors`, `Production`).
    - Custom groups appear as interactive tabs AND in an "Other Section" directly below the active tab.
-4. **Standalone React Native Mobile App (`Power-Mobile`)**:
-   - Created standalone Expo SDK 58 React Native app in `d:\TAP\Tap-git\Power-Mobile`.
-   - Native Firebase Auth persistence via `AsyncStorage`.
-   - Configured for direct Android `.apk` generation via `eas.json`.
 
 ---
 
-## 2. Firebase Database Schema Changes
+## 2. Firebase Realtime Database Architecture
 
-### A. New Node: `/power_app_users`
+### A. New Root Node: `/power_app_users`
 Stores user roles, access flags, and assigned machine numbers.
 
 ```json
 {
   "power_app_users": {
-    "operator1@company_com": {
-      "email": "operator1@company.com",
+    "operator1@factory_com": {
+      "email": "operator1@factory.com",
       "role": "user",
       "assignedMachines": [1, 2],
       "allMachines": false,
       "createdAt": 1731843000000,
       "updatedAt": 1731843000000
     },
+    "supervisor@factory_com": {
+      "email": "supervisor@factory.com",
+      "role": "user_editor",
+      "assignedMachines": [1, 3],
+      "allMachines": false,
+      "updatedAt": 1731843000000
+    },
     "tapcloud10@gmail_com": {
       "email": "tapcloud10@gmail.com",
       "role": "admin",
-      "assignedMachines": [1],
+      "assignedMachines": [1, 2, 3],
       "allMachines": true,
       "updatedAt": 1731843000000
     }
@@ -53,171 +59,235 @@ Stores user roles, access flags, and assigned machine numbers.
 #### Field Specifications:
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `email` | `string` | User's email address. |
-| `role` | `"admin" \| "user_editor" \| "user"` | Access role (`admin`, `user_editor`, or `user`). |
-| `assignedMachines` | `number[]` | Array of integer machine IDs (e.g. `[1, 3]` maps to `MC_001` and `MC_003`). |
-| `allMachines` | `boolean` | If `true`, the user can view all machines regardless of list. |
-| `updatedAt` | `number` | Unix timestamp of last assignment change. |
+| `email` | `String` | User's email address. |
+| `role` | `String` | Access role: `"admin"`, `"user_editor"`, or `"user"`. |
+| `assignedMachines` | `List<int>` | Array of integer machine numbers (e.g. `[1, 3]` maps to `MC_001` and `MC_003`). |
+| `allMachines` | `bool` | If `true`, the user can view all machines across the plant. |
+| `updatedAt` | `int` | Unix timestamp of last assignment change. |
 
-### The 3 User Access Roles:
-1. **`user` — Standard User (View Assigned Only)**:
-   - Dashboard is filtered to show **only assigned machines**.
-   - Read-only: Settings button is hidden; cannot modify register display names or machines.
-2. **`user_editor` — Standard User (View Assigned and editable reg address name)**:
-   - Dashboard is filtered to show **only assigned machines**.
-   - **Can open Settings** to configure visible registers and edit **custom display names / labels** for their assigned machines.
-   - Protected: Cannot add new machines, delete machines, or reset categories.
-3. **`admin` — Administrator (Full Access)**:
-   - Unrestricted access to all machines across the plant.
-   - Can add, delete, rename machines, and manage users & machine assignments.
+---
 
-### B. Sanitizing Email Keys for RTDB
-Firebase keys cannot contain characters like `.` or `@`. Use this helper function:
-```javascript
-export const sanitizeEmailKey = (email) => {
-  if (!email) return "";
-  return String(email)
-    .replace(/[[\]"']/g, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[.#$[\]]/g, "_");
-};
+### B. Sanitizing Email Keys for RTDB in Dart
+Firebase Realtime Database keys cannot contain `.`, `#`, `$`, `[`, or `]`. Use this Flutter helper:
+
+```dart
+String sanitizeEmailKey(String email) {
+  return email
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[.#$\[\]]'), '_');
+}
 ```
 
 ---
 
-## 3. Authentication & User Creation Architecture
+### C. Dart Data Model for User Permissions
 
-### A. Admin Whitelist (`src/constants/admins.js`)
-- Primary Admin: `tapcloud10@gmail.com`.
-- Helper: `isUserAdmin(user)` checks if current user is an authorized admin.
+```dart
+class PowerAppUser {
+  final String email;
+  final String role; // 'admin', 'user_editor', 'user'
+  final List<int> assignedMachines;
+  final bool allMachines;
+  final int? updatedAt;
 
-### B. Background User Creation (`src/firebase/auth.js` / Mobile `AuthContext.js`)
-Standard Firebase `createUserWithEmailAndPassword(auth, email, password)` replaces the active user session on the client. To allow the Admin to create users **without logging out**, a temporary secondary Firebase App instance is used:
+  PowerAppUser({
+    required this.email,
+    required this.role,
+    required this.assignedMachines,
+    required this.allMachines,
+    this.updatedAt,
+  });
 
-```javascript
-import { initializeApp, deleteApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
+  bool get isAdmin => role == 'admin';
+  bool get isEditor => role == 'user_editor';
+  bool get isViewOnly => role == 'user';
 
-export const adminCreateUser = async (email, password) => {
-  const secondaryAppName = `UserCreation_${Date.now()}`;
-  const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
-  const secondaryAuth = getAuth(secondaryApp);
+  factory PowerAppUser.fromMap(String email, Map<dynamic, dynamic>? map) {
+    if (map == null) {
+      return PowerAppUser(
+        email: email,
+        role: 'user',
+        assignedMachines: [],
+        allMachines: false,
+      );
+    }
+
+    final rawAssigned = map['assignedMachines'];
+    List<int> assigned = [];
+    if (rawAssigned is List) {
+      assigned = rawAssigned.map((e) => int.tryParse(e.toString()) ?? 0).where((e) => e > 0).toList();
+    }
+
+    return PowerAppUser(
+      email: map['email'] ?? email,
+      role: map['role'] ?? 'user',
+      assignedMachines: assigned,
+      allMachines: map['allMachines'] == true,
+      updatedAt: map['updatedAt'] is int ? map['updatedAt'] : null,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'email': email,
+      'role': role,
+      'assignedMachines': assignedMachines,
+      'allMachines': allMachines,
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+    };
+  }
+}
+```
+
+---
+
+## 3. The 3 User Access Roles & Flutter UI Rules
+
+| Role | Dashboard Telemetry | Settings / Configuration Screen | Edit Register Names & Labels | Add / Delete Machines | Manage Users |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`user`** *(Standard User - View Assigned Only)* | Only assigned machines | ❌ **Hidden** | ❌ Read-only | ❌ No | ❌ No |
+| **`user_editor`** *(Standard User - View Assigned & Editable Reg Names)* | Only assigned machines | ✅ **Accessible** | ✅ **Yes** (Can edit custom labels & address names for assigned machines) | ❌ **Hidden / Disabled** | ❌ No |
+| **`admin`** *(Administrator - Full Access)* | All machines | ✅ **Accessible** | ✅ **Yes** | ✅ **Yes** (Full control) | ✅ **Yes** (Create users & assign machines) |
+
+### Hardcoded Fallback Admin Whitelist:
+If `/power_app_users` is empty or offline, always treat `tapcloud10@gmail.com` as an Administrator.
+
+```dart
+bool isUserAdmin(String? email) {
+  if (email == null) return false;
+  return email.trim().toLowerCase() == 'tapcloud10@gmail.com';
+}
+```
+
+---
+
+## 4. Flutter Implementation: Creating Users Without Logging Out Admin
+
+In Firebase Auth, calling `FirebaseAuth.instance.createUserWithEmailAndPassword()` on the default instance **replaces the active user session**, logging the Admin out.
+
+To avoid this in Flutter, use a **temporary secondary `FirebaseApp` instance**:
+
+```dart
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+
+Future<UserCredential?> adminCreateUserAccount({
+  required String email,
+  required String password,
+  required String role, // 'user', 'user_editor', 'admin'
+  required List<int> assignedMachines,
+  required bool allMachines,
+}) async {
+  final String secondaryAppName = 'UserCreation_${DateTime.now().millisecondsSinceEpoch}';
+  
+  // 1. Initialize temporary secondary app sharing the same Firebase options
+  FirebaseApp secondaryApp = await Firebase.initializeApp(
+    name: secondaryAppName,
+    options: Firebase.app().options,
+  );
 
   try {
-    const cred = await createUserWithEmailAndPassword(secondaryAuth, email.trim(), password);
-    await signOut(secondaryAuth);
-    return cred.user;
+    // 2. Create the user credential on the isolated secondary app
+    FirebaseAuth secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+    UserCredential cred = await secondaryAuth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password.trim(),
+    );
+
+    // 3. Sign out of secondary app immediately
+    await secondaryAuth.signOut();
+
+    // 4. Save user permissions to Firebase Realtime Database
+    final String sanitizedKey = sanitizeEmailKey(email);
+    final DatabaseReference userRef = FirebaseDatabase.instance.ref('power_app_users/$sanitizedKey');
+    
+    await userRef.set({
+      'email': email.trim().toLowerCase(),
+      'role': role,
+      'assignedMachines': (allMachines || role == 'admin') ? [] : assignedMachines,
+      'allMachines': (allMachines || role == 'admin'),
+      'createdAt': ServerValue.timestamp,
+      'updatedAt': ServerValue.timestamp,
+    });
+
+    return cred;
   } finally {
-    try {
-      await deleteApp(secondaryApp);
-    } catch (e) {
-      // ignore disposal error
-    }
+    // 5. Clean up the secondary app instance
+    await secondaryApp.delete();
   }
-};
+}
 ```
 
 ---
 
-## 4. Per-User Machine Filtering Logic
+## 5. Flutter Implementation: Filtering Telemetry by User Assignment
 
-### In `src/contexts/machineConfigContext/`:
-```javascript
-const getCategoryConfig = (categoryKey = 'power_meters') => {
-  const cat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG.power_meters;
-  const baseAllowed = cat?.allowed || [];
-
-  // Filter machines if user is a standard user with assigned machines
-  let effectiveAllowed = baseAllowed;
-  if (!isAdmin && Array.isArray(assignedMachines)) {
-    effectiveAllowed = baseAllowed.filter((num) => assignedMachines.includes(num));
+### A. Determining Active Machines for Current User:
+```dart
+List<int> getVisibleMachines({
+  required PowerAppUser currentUser,
+  required List<int> allPlantMachines, // e.g. [1, 2, 3, 4]
+}) {
+  if (currentUser.isAdmin || currentUser.allMachines) {
+    return allPlantMachines;
   }
-
-  return {
-    allowedNumbers: effectiveAllowed,
-    allAllowedNumbers: baseAllowed,
-    machineNames: cat?.names || {},
-    machineAddresses: cat?.addresses || {},
-    machineCustomLabels: cat?.customLabels || {},
-    label: cat?.label || categoryKey,
-    allTelemetryAddresses,
-    allAddressKeys
-  };
-};
+  return allPlantMachines
+      .where((machineNum) => currentUser.assignedMachines.contains(machineNum))
+      .toList();
+}
 ```
 
-### In `src/components/home/IotChiller3.jsx` (and Mobile `DashboardScreen.js`):
-1. Filters the Firebase root keys to only fetch telemetry for `allowedNumbers`.
-2. If `!isAdmin && assignedMachines.length === 0`:
-   - Renders a warning card: *"No Machines Assigned Yet — Please contact your administrator to configure machine access."*
+### B. Handling Zero Assigned Machines:
+If `currentUser.assignedMachines.isEmpty && !currentUser.isAdmin`:
+Render a friendly placeholder screen in Flutter:
+> **⚠️ No Machines Assigned Yet**
+> *Please contact your administrator to configure your machine access permissions.*
+
+### C. Listening to Telemetry Streams in Flutter:
+Only subscribe to the Firebase paths for visible machines:
+```dart
+for (int machineNum in visibleMachines) {
+  final String machineId = "MC_${machineNum.toString().padLeft(3, '0')}"; // e.g. MC_001
+  FirebaseDatabase.instance.ref('Power/$machineId').onValue.listen((event) {
+    // Update state for this machine
+  });
+}
+```
 
 ---
 
-## 5. UI Components Added / Updated
+## 6. Flutter UI Screens Checklist
 
-### 1. `UserManagerModal` (`src/components/common/UserManagerModal.jsx` / Mobile `src/components/UserManagerModal.js`)
-- **Header**: Brand title, Admin Only badge, and close button.
-- **Search Bar**: Quick search to find users by email.
-- **Create User Form**:
-  - Inputs for Email, Password, and Role.
-  - Multi-select machine checkboxes (`MC_001`, `MC_002`, etc.) with "Select All" / "Clear".
-  - "All Machines" toggle for plant managers.
-- **User Directory**:
-  - Lists all users with their active machine chips.
-  - "Edit Machines" trigger allowing inline permission edits with instant cloud sync.
-  - Delete user permissions button.
-
-### 2. `Header` (`src/components/header/index.jsx` / Mobile `src/components/Header.js`)
-- Added **"Users"** button (`👥 Users`) displayed **only when `isAdmin === true`**.
-- Opens `UserManagerModal`.
-
-### 3. `IotChiller3` / Mobile `DashboardScreen`
-- **Hero Card**: High-contrast Active Energy (`kWh`) & Grid Frequency (`Hz`).
-- **Telemetry Tabs**: `VLN` (with Avg), `VLL` (with Avg), `I` (with Avg), `Power` (W, PF, kVA, etc.), and `VAF` (Phase R, Y, B sub-tabs).
-- **Lower Custom Groups Section**: Any custom registers (e.g. `ONE [aaa: 8787]`) are rendered directly below the active tab.
+1. **Dashboard Screen**:
+   - Header with current user email, role badge (`Admin`, `Editor`, or `View Only`), and Logout button.
+   - Show `👥 Users` button in App Bar **only if `currentUser.isAdmin`**.
+   - Show `⚙️ Settings` button in App Bar **if `currentUser.isAdmin || currentUser.isEditor`** (hidden for standard `user`).
+   - Machine selector tabs filtered to `visibleMachines`.
+2. **User Management Screen/Dialog (Admin Only)**:
+   - Form to input: `User Email`, `Initial Password` (min 6 chars), and `Account Role` dropdown:
+     - `Standard User (View Assigned Only)`
+     - `Standard User (View Assigned and editable reg address name)`
+     - `Administrator (Full Access)`
+   - Checkbox list of available machines (`MC_001`, `MC_002`, etc.) with "Select All" / "Clear" and "All Machines" checkbox.
+   - User Directory listing all accounts with their assigned machines and an "Edit" / "Delete" button.
+3. **Machine Settings Screen**:
+   - For `admin`: Allow adding machines, deleting machines, and editing register display labels.
+   - For `user_editor`: Hide "Add Machine" and "Delete Machine" buttons; allow editing register display labels and custom names for their assigned units.
 
 ---
 
-## 6. Project Files Map
+## 7. Web Application Reference Map
 
-| File Path | Description of Changes |
+Your friend can inspect these web files in the repository as a 1:1 reference:
+
+| Feature / Logic | Web Reference File |
 | :--- | :--- |
-| `src/constants/admins.js` | Added `sanitizeEmailKey(email)` for RTDB path safety. |
-| `src/firebase/firebase.js` | Exported `firebaseConfig` object for secondary app initialization. |
-| `src/firebase/auth.js` | Added `adminCreateUser(email, password)` without sign-out. |
-| `src/contexts/authContext/` | Subscribes to user profile in `/power_app_users`, exposes `assignedMachines`. |
-| `src/contexts/machineConfigContext/` | Added `allUsers` state, `saveUserPermissions`, `deleteUserPermissions`, and filtered `allowedNumbers`. |
-| `src/components/common/UserManagerModal.jsx` | *(New)* Full user creation & machine assignment modal for Web. |
-| `src/components/header/index.jsx` | Added Admin "Users" button and modal rendering. |
-| `src/components/home/IotChiller3.jsx` | Guard for zero assigned machines and per-user telemetry filtering. |
-| `src/components/auth/register/index.jsx` | Auto-registers self-signed users into `/power_app_users` with empty assignment. |
-
----
-
-## 7. Instructions for Mobile APK Development
-
-The standalone mobile project is in:
-📁 **[`d:\TAP\Tap-git\Power-Mobile`](file:///d:/TAP/Tap-git/Power-Mobile)**
-
-### Key Mobile Dependencies:
-- `firebase@^13.3.0`
-- `@react-native-async-storage/async-storage@2.2.0`
-- `react-native-safe-area-context`
-- `@expo/vector-icons`
-
-### To Build the APK:
-1. **Cloud Build (Recommended — No Android Studio needed)**:
-   ```bash
-   cd d:\TAP\Tap-git\Power-Mobile
-   npx eas-cli login
-   npx eas-cli build -p android --profile preview
-   ```
-2. **Local Build**:
-   ```bash
-   cd d:\TAP\Tap-git\Power-Mobile
-   npx expo prebuild --platform android
-   cd android
-   .\gradlew assembleRelease
-   ```
-   Output: `android/app/build/outputs/apk/release/app-release.apk`
+| **Email Sanitization** | `src/constants/admins.js` (`sanitizeEmailKey`) |
+| **Secondary App Creation** | `src/firebase/auth.js` (`adminCreateUser`) |
+| **User State & Role Listener** | `src/contexts/authContext/index.jsx` |
+| **Machine Config & Filter Logic**| `src/contexts/machineConfigContext/index.jsx` |
+| **User Management Modal UI** | `src/components/common/UserManagerModal.jsx` |
+| **Dashboard Machine Filter** | `src/components/home/IotChiller3.jsx` |
+| **Settings / Label Editor UI** | `src/components/common/MachineManagerModal.jsx` |
