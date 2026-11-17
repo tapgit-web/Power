@@ -2,6 +2,11 @@ import React, { useState } from 'react'
 import { Navigate, Link } from 'react-router-dom'
 import { useAuth } from '../../../contexts/authContext'
 import { doCreateUserWithEmailAndPassword } from '../../../firebase/auth'
+import { getDatabase, ref, set } from 'firebase/database'
+import { app } from '../../../firebase/firebase'
+import { sanitizeEmailKey, isUserAdmin } from '../../../constants/admins'
+
+const database = getDatabase(app)
 
 const Register = () => {
 
@@ -23,7 +28,20 @@ const Register = () => {
         if (!isRegistering) {
             setIsRegistering(true)
             try {
-                await doCreateUserWithEmailAndPassword(email, password)
+                const cred = await doCreateUserWithEmailAndPassword(email, password)
+                if (cred?.user?.email) {
+                    const cleanEmail = cred.user.email.toLowerCase().trim()
+                    const emailKey = sanitizeEmailKey(cleanEmail)
+                    const isAdminUser = isUserAdmin(cred.user)
+                    const userRef = ref(database, `power_app_users/${emailKey}`)
+                    await set(userRef, {
+                        email: cleanEmail,
+                        role: isAdminUser ? 'admin' : 'user',
+                        assignedMachines: [],
+                        allMachines: isAdminUser,
+                        createdAt: Date.now()
+                    })
+                }
             } catch (error) {
                 console.error("Sign up failed:", error)
                 if (error.code === 'auth/email-already-in-use') {

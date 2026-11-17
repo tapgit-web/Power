@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getDatabase, ref, onValue } from "firebase/database";
 import { app } from "../../firebase/firebase";
+import { useAuth } from "../../contexts/authContext";
 import { useMachineConfig } from "../../contexts/machineConfigContext";
 import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from "../../constants/telemetryAddresses";
 
@@ -1009,6 +1010,7 @@ const MachineTelemetryCard = ({
 };
 
 export const Iot_chiller = ({ searchQuery = "" }) => {
+  const { isAdmin, assignedMachines } = useAuth();
   const { getCategoryConfig } = useMachineConfig();
   const { allowedNumbers, machineNames, machineAddresses, machineCustomLabels, allAddressKeys } = getCategoryConfig("power_meters");
 
@@ -1230,6 +1232,28 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
           </svg>
           <p className="text-sm font-semibold text-slate-700">No machine matches "{searchQuery}"</p>
           <p className="text-xs text-slate-500 mt-1">Try searching by ID (e.g. MC_001) or machine location name.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If user is a standard user and has 0 assigned machines, show friendly empty assignment state
+  if (!isAdmin && Array.isArray(assignedMachines) && assignedMachines.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-12 text-center">
+        <div className="p-8 bg-white rounded-3xl border border-amber-200 shadow-sm text-center">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mx-auto mb-4">
+            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-slate-900">No Machines Assigned Yet</h2>
+          <p className="text-sm text-slate-600 mt-2 max-w-md mx-auto">
+            Your account is active, but an administrator has not yet assigned any machines to your profile.
+          </p>
+          <div className="mt-4 p-3 bg-amber-50/60 rounded-xl border border-amber-200/80 inline-block text-xs font-semibold text-amber-900">
+            Please contact your system administrator to configure your machine access.
+          </div>
         </div>
       </div>
     );

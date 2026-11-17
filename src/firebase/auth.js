@@ -1,5 +1,7 @@
-import { auth } from "./firebase";
+import { auth, firebaseConfig } from "./firebase";
+import { initializeApp, deleteApp } from "firebase/app";
 import {
+  getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -8,7 +10,8 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   setPersistence,
-  browserSessionPersistence
+  browserSessionPersistence,
+  signOut
 } from "firebase/auth";
 
 
@@ -46,4 +49,25 @@ export const doSendEmailVerification = () => {
   return sendEmailVerification(auth.currentUser, {
     url: `${window.location.origin}/home`,
   });
+};
+
+/**
+ * Creates a new user in Firebase Auth without switching or signing out the current admin session.
+ */
+export const adminCreateUser = async (email, password) => {
+  const secondaryAppName = `UserCreationApp_${Date.now()}`;
+  const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+  const secondaryAuth = getAuth(secondaryApp);
+
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    await signOut(secondaryAuth);
+    return cred.user;
+  } finally {
+    try {
+      await deleteApp(secondaryApp);
+    } catch (e) {
+      // ignore app disposal error
+    }
+  }
 };

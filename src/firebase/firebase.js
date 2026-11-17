@@ -17,8 +17,8 @@ const firebaseConfig = {
 
 
 
-const firebaseServices = { app, auth };
+const firebaseServices = { app, auth, firebaseConfig };
 export default firebaseServices;
-export { app, auth };
+export { app, auth, firebaseConfig };
 
 

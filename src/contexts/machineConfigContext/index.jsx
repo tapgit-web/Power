@@ -1,13 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { getDatabase, ref, onValue, set } from 'firebase/database';
 import { app } from '../../firebase/firebase';
+import { useAuth } from '../authContext';
+import { sanitizeEmailKey } from '../../constants/admins';
 import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from '../../constants/telemetryAddresses';
 
 const database = getDatabase(app);
 
-// Dedicated Firebase Realtime Database path for Power Monitor project (isolated from other projects)
+// Dedicated Firebase Realtime Database paths for Power Monitor project
 const POWER_CONFIG_PATH = 'power_app_config/machines';
 const CUSTOM_REGISTERS_PATH = 'power_app_config/custom_registers';
+const POWER_USERS_PATH = 'power_app_users';
 
 // Dedicated baseline defaults for Power Monitoring machines
 export const DEFAULT_MACHINES_CONFIG = {
@@ -37,10 +40,29 @@ export const useMachineConfig = () => {
 };
 
 export const MachineConfigProvider = ({ children }) => {
+  const { isAdmin, assignedMachines } = useAuth();
   const [machinesConfig, setMachinesConfig] = useState(DEFAULT_MACHINES_CONFIG);
   const [customRegisters, setCustomRegisters] = useState({});
+  const [allUsers, setAllUsers] = useState({});
   const [isSyncedWithCloud, setIsSyncedWithCloud] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Subscribe to `/power_app_users` for Admins
+  useEffect(() => {
+    if (!isAdmin) return;
+    const usersRef = ref(database, POWER_USERS_PATH);
+    const unsubscribe = onValue(
+      usersRef,
+      (snapshot) => {
+        const val = snapshot.val();
+        setAllUsers(val && typeof val === 'object' ? val : {});
+      },
+      (error) => {
+        console.error('Error fetching users from Firebase:', error);
+      }
+    );
+    return () => unsubscribe();
+  }, [isAdmin]);
 
   // Subscribe to Firebase RTDB node `/power_app_config/custom_registers`
   useEffect(() => {
@@ -314,14 +336,51 @@ export const MachineConfigProvider = ({ children }) => {
     return await persistConfig(DEFAULT_MACHINES_CONFIG);
   };
 
+  // Save or update user permissions and assigned machines
+  const saveUserPermissions = async ({ email, role = 'user', assignedMachines = [], allMachines = false }) => {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail) throw new Error('Email is required');
+    const emailKey = sanitizeEmailKey(cleanEmail);
+    const userRef = ref(database, `${POWER_USERS_PATH}/${emailKey}`);
+    const record = {
+      email: cleanEmail,
+      role: role || 'user',
+      assignedMachines: Array.isArray(assignedMachines) ? assignedMachines : [],
+      allMachines: Boolean(allMachines),
+      updatedAt: Date.now(),
+    };
+    await set(userRef, record);
+    return { success: true };
+  };
+
+  // Remove a user's permissions and assignment
+  const deleteUserPermissions = async (email) => {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail) return { success: false, error: 'No email provided' };
+    const emailKey = sanitizeEmailKey(cleanEmail);
+    const userRef = ref(database, `${POWER_USERS_PATH}/${emailKey}`);
+    await set(userRef, null);
+    return { success: true };
+  };
+
   // Fast getter for consumption by dashboard components
   const getCategoryConfig = (categoryKey = 'power_meters') => {
     const cat =
       machinesConfig[categoryKey] ||
       Object.values(machinesConfig)[0] ||
       DEFAULT_MACHINES_CONFIG.power_meters;
+
+    const baseAllowed = cat?.allowed || [];
+
+    // Filter machines by assignedMachines if user is not admin
+    let effectiveAllowed = baseAllowed;
+    if (!isAdmin && Array.isArray(assignedMachines)) {
+      effectiveAllowed = baseAllowed.filter((num) => assignedMachines.includes(num));
+    }
+
     return {
-      allowedNumbers: cat?.allowed || [],
+      allowedNumbers: effectiveAllowed,
+      allAllowedNumbers: baseAllowed,
       machineNames: cat?.names || {},
       machineAddresses: cat?.addresses || {},
       machineCustomLabels: cat?.customLabels || {},
@@ -336,6 +395,7 @@ export const MachineConfigProvider = ({ children }) => {
     customRegisters,
     allTelemetryAddresses,
     allAddressKeys,
+    allUsers,
     isSyncedWithCloud,
     isLoading,
     addMachine,
@@ -346,7 +406,9 @@ export const MachineConfigProvider = ({ children }) => {
     syncDefaultsToCloud,
     getCategoryConfig,
     addCustomRegister,
-    removeCustomRegister
+    removeCustomRegister,
+    saveUserPermissions,
+    deleteUserPermissions
   };
 
   return (

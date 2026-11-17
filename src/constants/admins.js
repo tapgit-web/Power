@@ -17,3 +17,16 @@ export const isUserAdmin = (user) => {
   const userEmail = clean(user.email);
   return ADMIN_EMAILS.some((adminEmail) => clean(adminEmail) === userEmail);
 };
+
+/**
+ * Sanitizes an email address to be safely used as a Firebase Realtime Database node key.
+ * (Replaces '.', '#', '$', '[', ']' which are forbidden by Firebase RTDB)
+ */
+export const sanitizeEmailKey = (email) => {
+  if (!email) return "";
+  return String(email)
+    .replace(/[[\]"']/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[.#$[\]]/g, "_");
+};

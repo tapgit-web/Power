@@ -3,11 +3,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/authContext'
 import { doSignOut } from '../../firebase/auth'
 import { MachineManagerModal } from '../common/MachineManagerModal'
+import { UserManagerModal } from '../common/UserManagerModal'
 
 const Header = () => {
     const navigate = useNavigate()
-    const { userLoggedIn, currentUser } = useAuth()
+    const { userLoggedIn, currentUser, isAdmin } = useAuth()
     const [isMachineModalOpen, setIsMachineModalOpen] = useState(false)
+    const [isUserModalOpen, setIsUserModalOpen] = useState(false)
 
     // Avoid rendering nav until login state is determined
     if (userLoggedIn === null) {
@@ -48,6 +50,20 @@ const Header = () => {
                                 </span>
                             </div>
 
+                            {/* User Access Manager button (Admin only) */}
+                            {isAdmin && (
+                                <button
+                                    onClick={() => setIsUserModalOpen(true)}
+                                    className="px-2.5 py-1 sm:px-3 sm:py-2 text-xs sm:text-sm font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 rounded-lg sm:rounded-xl border border-emerald-300 transition-all duration-300 shadow-sm active:scale-95 flex items-center gap-1 cursor-pointer"
+                                    title="Create users and assign machines"
+                                >
+                                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                    </svg>
+                                    <span className="hidden sm:inline">Users</span>
+                                </button>
+                            )}
+
                             {/* Settings / Machine Manager button (accessible to user and admin) */}
                             <button
                                 onClick={() => setIsMachineModalOpen(true)}
@@ -82,10 +98,18 @@ const Header = () => {
             </nav>
 
             {userLoggedIn && (
-                <MachineManagerModal
-                    isOpen={isMachineModalOpen}
-                    onClose={() => setIsMachineModalOpen(false)}
-                />
+                <>
+                    <MachineManagerModal
+                        isOpen={isMachineModalOpen}
+                        onClose={() => setIsMachineModalOpen(false)}
+                    />
+                    {isAdmin && (
+                        <UserManagerModal
+                            isOpen={isUserModalOpen}
+                            onClose={() => setIsUserModalOpen(false)}
+                        />
+                    )}
+                </>
             )}
         </>
     )
