@@ -1,31 +1,31 @@
-# Comprehensive Implementation Plan: Custom IoT Power Monitoring System
+# Comprehensive Implementation Plan: Custom IoT Monitoring & Control System
 
-> **Project Scope**: Build a fully owned, high-performance custom backend (Node.js/Express + WebSockets + SQLite/PostgreSQL) to replace Firebase. Supports multi-machine scaling, dynamic per-machine register schemas, 3-tier user access control, and an Admin-controlled conditional data logging engine across the **React Web Dashboard** and **Flutter Mobile App**.
+> **Project Scope**: Build a high-performance, fully owned custom backend (**Node.js/Express + WebSockets + MongoDB Atlas**) to replace Firebase. Supports alphanumeric machine IDs (e.g., `SAFC_M33`), hardware gateway 2-way communication (`read` telemetry + `write` Modbus commands), dynamic per-machine registers, 3-tier user access control, and Admin-controlled conditional data logging across the **React Web Dashboard** and **Flutter Mobile App**.
 
 ---
 
-## 1. System Topology & Architecture
+## 1. System Topology & 2-Way Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Plant ["Plant Floor Hardware"]
-        M1["Machine MC_001\n(4 Registers: Voltage/Energy)"] -->|RS485 / Modbus| GW["IoT Gateway / ESP32"]
-        M2["Machine MC_002\n(25 Registers: Sensors/Current)"] -->|RS485 / Modbus| GW
-        Mn["Machine MC_xxx\n(Custom Register Count)"] -->|RS485 / Modbus| GW
-        GW -->|HTTP POST / Ingest API| Ingest["Telemetry Ingestion Engine"]
+    subgraph Plant ["Plant Floor Hardware (PLCs & Meters)"]
+        GW["IoT Gateway / PLC\n(e.g., Machine: SAFC_M33)"]
+        GW -->|HTTP POST: read/ telemetry| Ingest["Telemetry Ingestion Engine"]
+        WriteQueue["Modbus Write Dispatcher\n(do_mb_write)"] -->|HTTP / MQTT / Downlink| GW
     end
 
     subgraph Backend ["Custom Backend Server (Node.js + Express + Socket.IO)"]
         Ingest --> Cache["In-Memory Live Telemetry Snapshot"]
-        Ingest --> LogSwitch{"Admin Logging\nEnabled?"}
-        LogSwitch -->|YES| DBLog[(telemetry_history Table)]
-        LogSwitch -->|NO| Skip[Skip Disk Write / Live Only]
+        Ingest --> LogSwitch{"Admin Logging\nEnabled for Machine?"}
+        LogSwitch -->|YES| AtlasLogs[(MongoDB Atlas: telemetry_logs)]
+        LogSwitch -->|NO| Skip[Skip DB Write / Live Stream Only]
         
         Auth["JWT Auth Service\n(bcrypt + RBAC)"]
-        UserMgmt["User & Machine Permission Manager"]
-        Sockets["Socket.IO Server\n(Machine-Specific Rooms)"]
+        UserMgmt["User & Machine Manager"]
+        Sockets["Socket.IO Server\n(Rooms by Machine ID)"]
         
         Cache --> Sockets
+        ControlAPI["Control API\n(POST /machines/:id/write)"] --> WriteQueue
     end
 
     subgraph Clients ["Client Applications"]
@@ -35,225 +35,295 @@ flowchart TD
 
     Sockets <-->|Realtime Telemetry Stream| Web
     Sockets <-->|Realtime Telemetry Stream| Flutter
-    Web <-->|REST API / JWT| Auth
-    Web <-->|REST API / JWT| UserMgmt
-    Flutter <-->|REST API / JWT| Auth
-    Flutter <-->|REST API / JWT| UserMgmt
+    Web <-->|REST API / JWT Auth| Auth
+    Flutter <-->|REST API / JWT Auth| Auth
+    Web -->|Remote Control: Start/Stop| ControlAPI
+    Flutter -->|Remote Control: Start/Stop| ControlAPI
 ```
 
 ---
 
-## 2. Complete Database Schema (SQLite / PostgreSQL)
+## 2. Updated MongoDB Atlas Database Schema
 
-### Table 1: `users`
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `INTEGER` / `UUID` | PRIMARY KEY | Unique user ID |
-| `email` | `VARCHAR(255)` | UNIQUE, NOT NULL | Login email address |
-| `password_hash` | `VARCHAR(255)` | NOT NULL | Bcrypt hashed password |
-| `role` | `VARCHAR(32)` | NOT NULL | `'admin'`, `'user_editor'`, or `'user'` |
-| `all_machines` | `BOOLEAN` | DEFAULT false | If true, user can view all plant machines |
-| `created_at` | `TIMESTAMP` | DEFAULT NOW() | Account creation date |
-| `updated_at` | `TIMESTAMP` | DEFAULT NOW() | Last modification timestamp |
+### Collection 1: `machines`
+Stores configuration, friendly names, device mappings, and logging controls for each machine:
 
-### Table 2: `user_machine_assignments`
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `SERIAL` | PRIMARY KEY | Record ID |
-| `user_id` | `INTEGER` / `UUID` | FK (`users.id`) ON DELETE CASCADE | Target user ID |
-| `machine_number`| `INTEGER` | NOT NULL | Machine ID (e.g. 1 for `MC_001`, 2 for `MC_002`) |
-
-*(Unique index on `(user_id, machine_number)` to prevent duplicates).*
-
-### Table 3: `machine_configs` *(Dynamic Per-Machine Setup)*
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `machine_number`| `INTEGER` | PRIMARY KEY | Numeric ID (1, 2, 3...) |
-| `display_name` | `VARCHAR(128)` | NOT NULL | User-friendly name (e.g., "Main Chiller 1") |
-| `category` | `VARCHAR(64)` | DEFAULT 'power_meters' | Grouping tab category |
-| `is_active` | `BOOLEAN` | DEFAULT true | Soft delete / active state |
-| `is_logging_enabled`| `BOOLEAN` | DEFAULT false | **Per-machine logging switch (Admin controlled)** |
-| `logging_interval_sec`| `INTEGER` | DEFAULT 60 | Min seconds between database writes (e.g., 30s, 60s) |
-
-### Table 4: `machine_register_definitions` *(Per-Machine Dynamic Registers)*
-Stores the custom register definitions for each machine independently:
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `SERIAL` | PRIMARY KEY | Definition ID |
-| `machine_number`| `INTEGER` | FK (`machine_configs.machine_number`) | Machine this register belongs to |
-| `address_key` | `VARCHAR(32)` | NOT NULL | Register address (e.g., `"40001"`, `"30005"`) |
-| `display_name` | `VARCHAR(128)` | NOT NULL | Changeable name (e.g., `"Phase R Voltage"`) |
-| `unit` | `VARCHAR(16)` | NULLABLE | Measurement unit (`V`, `A`, `kW`, `kWh`, `Hz`, `°C`, `bar`) |
-| `group_name` | `VARCHAR(64)` | DEFAULT 'General' | UI Tab/Group (`Voltage`, `Current`, `Power`, `Sensors`) |
-| `is_visible` | `BOOLEAN` | DEFAULT true | Visibility toggle |
-| `multiplier` | `NUMERIC(6,4)` | DEFAULT 1.0 | Scale multiplier (e.g. 0.1 for 1 decimal point) |
-
-*(Unique constraint on `(machine_number, address_key)`).*
-
-### Table 5: `system_settings`
-| Key | Type | Description |
-| :--- | :--- | :--- |
-| `global_logging_enabled` | `BOOLEAN` | **Master switch: Turn logging ON/OFF plant-wide** |
-| `retention_days` | `INTEGER` | Auto-purges logs older than X days (default: 90) |
-
-### Table 6: `telemetry_history` *(Conditional Database Logs)*
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `BIGSERIAL` | PRIMARY KEY | Entry ID |
-| `machine_number`| `INTEGER` | INDEX, NOT NULL | Machine ID |
-| `recorded_at` | `TIMESTAMP` | INDEX, DEFAULT NOW() | Timestamp of reading |
-| `raw_registers` | `JSONB` / `TEXT` | NOT NULL | Complete key-value snapshot of all received registers |
-
----
-
-## 3. The 3 User Access Roles
-
-| Role | Dashboard Telemetry | Settings (⚙️) Button | Change Register Names & Labels | Add / Delete Machines | User Management |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| **`user`** *(View Only)* | Assigned machines only | ❌ Hidden | ❌ No (Read-only) | ❌ No | ❌ No |
-| **`user_editor`** *(View & Edit)* | Assigned machines only | ✅ Visible | ✅ **Yes** (For assigned machines) | ❌ Hidden | ❌ No |
-| **`admin`** *(Full Access)* | All machines | ✅ Visible | ✅ **Yes** (For all machines) | ✅ **Yes** | ✅ **Yes** (Create & Assign) |
-
----
-
-## 4. Dynamic Per-Machine Register Approach
-
-### The Challenge:
-- Machine 1 (`MC_001`) might be a simple 3-phase meter with 4 registers (`40001`, `40003`, `40019`, `40027`).
-- Machine 2 (`MC_002`) might be a heavy compressor with 25 registers (`30001` to `30025`, including temperature and pressure sensors).
-
-### The Solution:
-1. **Dynamic Ingestion**: Hardware gateway sends key-value JSON for whatever registers it read:
-   ```json
-   // MC_001 packet
-   { "machineNumber": 1, "data": { "40001": 230.5, "40003": 231.2, "40027": 12543.8 } }
-
-   // MC_002 packet
-   { "machineNumber": 2, "data": { "30001": 42.5, "30005": 3.8, "30012": 72.4 } }
-   ```
-2. **Dynamic UI Rendering (Web & Flutter)**:
-   - When the user selects `MC_001`, the client fetches `MC_001`'s register schema and renders only those 4 cards.
-   - When the user selects `MC_002`, the client renders its 25 cards with appropriate units (`°C`, `bar`, `A`).
-   - No blank cards, no hardcoded field errors.
-
----
-
-## 5. Admin-Controlled Conditional Data Logging
-
-### The Rule:
-> **Telemetry is ONLY saved to the database if the Admin enables it.**
-
-```javascript
-// Telemetry Ingestion Handler
-async function handleIncomingTelemetry(machineNumber, data) {
-  // Step 1: ALWAYS stream live to Web & Flutter dashboards in real-time
-  io.to(`machine_${machineNumber}`).emit('telemetry_update', {
-    machineNumber,
-    timestamp: Date.now(),
-    data
-  });
-
-  // Step 2: Check if logging is turned ON
-  const isGlobalOn = await systemSettings.get('global_logging_enabled');
-  const machineConfig = await getMachineConfig(machineNumber);
-
-  if (isGlobalOn && machineConfig.is_logging_enabled) {
-    const now = Date.now();
-    const lastLogged = machineConfig.last_logged_at || 0;
-
-    // Check throttle interval (e.g. log once every 30s or 60s)
-    if (now - lastLogged >= machineConfig.logging_interval_sec * 1000) {
-      await db.query(
-        'INSERT INTO telemetry_history (machine_number, raw_registers, recorded_at) VALUES ($1, $2, NOW())',
-        [machineNumber, JSON.stringify(data)]
-      );
-      machineConfig.last_logged_at = now;
-    }
-  }
-  // If logging is OFF, 0 database writes occur (0 disk space wasted)
+```json
+{
+  "_id": "SAFC_M33",
+  "machineId": "SAFC_M33",
+  "displayName": "Chiller Unit 33",
+  "category": "chillers",
+  "deviceId": "plc_device_2CD555577610CB5489A3789152DC0924",
+  "isActive": true,
+  "isLoggingEnabled": false,
+  "loggingIntervalSec": 60,
+  "lastSeen": "2026-11-24T08:00:00.000Z",
+  "customLabels": {
+    "bottle_count": "Main Line Bottle Count",
+    "chiller": "Chiller Temp (°C)",
+    "pump": "Primary Water Pump",
+    "comp": "Main Compressor",
+    "fsw_trip": "Flow Switch Alarm",
+    "kp1_trip": "Pressure Switch Alarm"
+  },
+  "createdAt": "2026-11-24T00:00:00.000Z",
+  "updatedAt": "2026-11-24T08:00:00.000Z"
 }
 ```
 
 ---
 
-## 6. REST API & WebSocket Specifications
+### Collection 2: `telemetry_logs` *(Time-Series Collection)*
+Recorded **only when Admin enables logging for this machine**. Uses MongoDB Time Series with a 90-day TTL index:
 
-### Auth & User Management
-* `POST /api/auth/login` &rarr; `{ email, password }` &rarr; Returns JWT token + user role + assigned machines list.
-* `GET /api/auth/me` &rarr; Returns active profile & permissions.
-* `GET /api/admin/users` *(Admin)* &rarr; List all users, roles, and assigned machines.
-* `POST /api/admin/users` *(Admin)* &rarr; Create new user without logging out Admin.
-* `PUT /api/admin/users/:id` *(Admin)* &rarr; Update role or machine assignments.
-* `DELETE /api/admin/users/:id` *(Admin)* &rarr; Delete user account.
+```json
+{
+  "_id": "67430000a1b2c3d4e5f67890",
+  "machineId": "SAFC_M33",
+  "deviceId": "plc_device_2CD555577610CB5489A3789152DC0924",
+  "timestamp": "2026-11-24T08:00:00.000Z",
+  "values": {
+    "bottle_count": 18332,
+    "bottle_count1": 57,
+    "bottle_count_2": 18638,
+    "chiller": 164,
+    "comp": 0,
+    "counter_reset": 0,
+    "fan": 0,
+    "fsw_trip": 1,
+    "kp1_trip": 1,
+    "plc_status": 0,
+    "pulse": 1,
+    "pump": 1,
+    "stop_plc": 0
+  }
+}
+```
+
+> [!TIP]
+> **Automatic 90-Day Auto-Cleanup**:
+> `db.telemetry_logs.createIndex({ "timestamp": 1 }, { expireAfterSeconds: 7776000 })`  
+> Keeps your free MongoDB Atlas M0 cluster permanently below the 512 MB quota!
+
+---
+
+### Collection 3: `commands_write` *(Modbus Downlink Control)*
+Stores queued or dispatched Modbus control instructions triggered from the Web or Flutter UI:
+
+```json
+{
+  "_id": "67431111b2c3d4e5f6789012",
+  "machineId": "SAFC_M33",
+  "method": "do_mb_write",
+  "status": "pending",
+  "triggeredBy": "operator1@factory.com",
+  "createdAt": "2026-11-24T08:05:00.000Z",
+  "executedAt": null,
+  "params": {
+    "device_name": "plc_device",
+    "write_list": [
+      {
+        "starting_reg_addr": 520,
+        "data": "1",
+        "data_type": 0,
+        "request_type": 5
+      }
+    ]
+  }
+}
+```
+
+---
+
+### Collection 4: `users` *(Role-Based Access Control)*
+
+```json
+{
+  "_id": "67432222c3d4e5f678901234",
+  "email": "operator1@factory.com",
+  "passwordHash": "$2b$10$e8w8...",
+  "role": "user_editor",
+  "assignedMachines": ["SAFC_M33", "MC_001"],
+  "allMachines": false,
+  "createdAt": "2026-11-24T00:00:00.000Z",
+  "updatedAt": "2026-11-24T08:00:00.000Z"
+}
+```
+
+---
+
+### Collection 5: `system_settings`
+```json
+{
+  "_id": "global_config",
+  "globalLoggingEnabled": true,
+  "retentionDays": 90,
+  "defaultLoggingIntervalSec": 60
+}
+```
+
+---
+
+## 3. The 3 User Access Roles
+
+| Role | Dashboard View | Settings (⚙️) Button | Edit Register Display Names & Labels | Remote Control (Write / Start / Stop) | Add / Delete Machines & Users |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| **`user`** *(View Only)* | Assigned machines only (`assignedMachines`) | ❌ Hidden | ❌ Read-only | ❌ No | ❌ No |
+| **`user_editor`** *(View & Edit)* | Assigned machines only (`assignedMachines`) | ✅ Visible | ✅ **Yes** (For assigned machines) | ✅ **Yes** (If assigned) | ❌ No (Add/Delete hidden) |
+| **`admin`** *(Full Access)* | All machines across plant | ✅ Visible | ✅ **Yes** (All machines) | ✅ **Yes** (Full control) | ✅ **Yes** (Full control) |
+
+---
+
+## 4. Hardware Gateway Ingestion & Control Specifications
+
+### A. Telemetry Ingestion (`read`):
+* **Endpoint**: `POST /api/machines/:machineId/read` (e.g. `/api/machines/SAFC_M33/read`)
+* **Headers**: `Content-Type: application/json`, `X-Gateway-Secret: <SECRET_KEY>`
+* **Gateway Payload**:
+  ```json
+  {
+    "read": {
+      "plc_device_2CD555577610CB5489A3789152DC0924": [
+        {
+          "ts": 1795441232454,
+          "values": {
+            "bottle_count": 18332,
+            "chiller": 164,
+            "comp": 0,
+            "pump": 1,
+            "fan": 0,
+            "fsw_trip": 1,
+            "kp1_trip": 1
+          }
+        }
+      ]
+    }
+  }
+  ```
+
+#### Backend Ingestion Logic:
+```javascript
+app.post('/api/machines/:machineId/read', async (req, res) => {
+  const { machineId } = req.params;
+  const rawRead = req.body.read || req.body;
+
+  const deviceKey = Object.keys(rawRead)[0];
+  const records = rawRead[deviceKey];
+  const latest = Array.isArray(records) ? records[records.length - 1] : records;
+  const timestamp = latest?.ts || Date.now();
+  const values = latest?.values || {};
+
+  // 1. Broadcast to Web & Flutter dashboards immediately
+  io.to(`machine_${machineId}`).emit('telemetry_update', {
+    machineId,
+    timestamp,
+    values
+  });
+
+  // 2. Check if logging is enabled by Admin
+  const machine = await Machine.findById(machineId);
+  const settings = await SystemSettings.findById('global_config');
+
+  if (settings?.globalLoggingEnabled && machine?.isLoggingEnabled) {
+    const now = Date.now();
+    const lastLogged = machine.lastLoggedAt ? new Date(machine.lastLoggedAt).getTime() : 0;
+    const intervalMs = (machine.loggingIntervalSec || 60) * 1000;
+
+    if (now - lastLogged >= intervalMs) {
+      await TelemetryLog.create({
+        machineId,
+        deviceId: deviceKey,
+        timestamp: new Date(timestamp),
+        values
+      });
+      machine.lastLoggedAt = new Date(now);
+      await machine.save();
+    }
+  }
+
+  res.status(200).json({ status: 'ok', received: Object.keys(values).length });
+});
+```
+
+---
+
+### B. Remote Modbus Control (`write`):
+* **Endpoint**: `POST /api/machines/:machineId/write`
+* **Triggered by**: Web or Flutter button click by an Admin or `user_editor`.
+* **Payload Generated for Gateway**:
+  ```json
+  {
+    "write": {
+      "method": "do_mb_write",
+      "params": {
+        "device_name": "plc_device",
+        "write_list": [
+          { "starting_reg_addr": 520, "data": "1", "data_type": 0, "request_type": 5 }
+        ]
+      }
+    }
+  }
+  ```
+
+---
+
+## 5. REST API & WebSocket Contracts
+
+### Authentication & Users
+* `POST /api/auth/login` &rarr; `{ email, password }` &rarr; Returns JWT token + role + `assignedMachines`.
+* `GET /api/auth/me` &rarr; Validates session and returns current profile.
+* `GET /api/admin/users` *(Admin)* &rarr; Lists all users with their roles and assigned machines.
+* `POST /api/admin/users` *(Admin)* &rarr; Creates a new operator without logging out Admin.
+* `PUT /api/admin/users/:id` *(Admin)* &rarr; Updates user role or assigned machines.
+* `DELETE /api/admin/users/:id` *(Admin)* &rarr; Deletes a user.
 
 ### Machine & Register Management
-* `GET /api/machines` &rarr; List all active machines with their register definitions.
-* `POST /api/machines` *(Admin)* &rarr; Add a new machine (`MC_004`, `MC_005`, etc.).
-* `DELETE /api/machines/:machineNumber` *(Admin)* &rarr; Delete a machine.
-* `PUT /api/machines/:machineNumber/registers/:addressKey` &rarr; Edit register display name / custom label (allowed for `admin`, and `user_editor` for assigned units).
-* `POST /api/machines/:machineNumber/registers` &rarr; Add a new custom register address to a machine.
-
-### Logging Control (Admin Only)
-* `PUT /api/admin/logging/global` &rarr; `{ "enabled": true/false, "retentionDays": 90 }`
-* `PUT /api/admin/machines/:machineNumber/logging` &rarr; `{ "enabled": true/false, "intervalSec": 30 }`
-* `GET /api/machines/:machineNumber/logs?from=...&to=...` &rarr; Fetch historical logs for charts.
-* `GET /api/machines/:machineNumber/logs/export?format=csv` &rarr; Download historical logs as Excel/CSV.
+* `GET /api/machines` &rarr; Returns all machines (`SAFC_M33`, etc.), their custom names, and custom register labels.
+* `POST /api/machines` *(Admin)* &rarr; Adds a new machine ID (e.g. `SAFC_M34`).
+* `PUT /api/machines/:machineId/labels` &rarr; Edits register display names (e.g., rename `chiller` &rarr; `"Inlet Chiller Temp"`).
+* `PUT /api/admin/machines/:machineId/logging` *(Admin)* &rarr; `{ "isLoggingEnabled": true, "intervalSec": 30 }`.
+* `PUT /api/admin/logging/global` *(Admin)* &rarr; Turn global logging ON/OFF.
+* `GET /api/machines/:machineId/logs?from=...&to=...` &rarr; Retrieves historical logs for charts.
+* `GET /api/machines/:machineId/logs/export?format=csv` &rarr; Exports logs as CSV/Excel.
 
 ### WebSocket Engine (Socket.IO)
-* **Handshake**: Client sends JWT token: `io('http://server:5000', { auth: { token: '...' } })`.
-* **Room Join**: Client requests rooms: `socket.emit('join_machines', [1, 2])`.
-  - Server verifies client permissions before granting room access.
-* **Live Broadcast**: Server emits `telemetry_update` to `machine_{id}` room.
+* **Handshake**: `io('http://server:5000', { auth: { token: '...' } })`.
+* **Join Room**: `socket.emit('join_machines', ['SAFC_M33'])`.
+* **Live Update**: Server emits `telemetry_update` to room `machine_SAFC_M33`.
 
 ---
 
-## 7. Client Integration Blueprints
+## 6. Client Integration Blueprints
 
-### A. React Web Dashboard Integration:
-1. Create `src/api/client.js`: Axios instance with JWT interceptor.
-2. In `src/contexts/authContext/`: Replace Firebase Auth with `login()`, `logout()`, `currentUser`.
-3. In `src/components/home/IotChiller3.jsx`:
-   - Replace Firebase `onValue()` with `socket.on('telemetry_update', ...)`.
-   - Read dynamic register schema for the selected machine to render cards.
-4. In `UserManagerModal.jsx` & `MachineManagerModal.jsx`: Connect to `/api/admin/users` and `/api/machines`.
+### A. React Web Dashboard:
+1. `src/api/client.js`: Axios instance targeting backend URL with Bearer token header.
+2. `src/contexts/authContext/`: State holding `currentUser`, `role`, and `assignedMachines`.
+3. `src/components/home/IotChiller3.jsx`:
+   - Connects to Socket.IO and listens to `telemetry_update`.
+   - Renders machine selector tabs based on `assignedMachines` (or all machines if Admin).
+   - Renders cards dynamically from the `values` dictionary.
+4. `MachineManagerModal.jsx`: Allows editing custom labels and toggling logging (Admin only).
 
-### B. Flutter Mobile App (APK) Integration:
-1. Add dependencies: `http: ^1.2.0`, `socket_io_client: ^3.0.0`, `flutter_secure_storage: ^9.0.0`.
-2. Create `AuthService`: Stores JWT token in secure storage; parses role (`admin`, `user_editor`, `user`).
-3. Create `SocketService`: Connects with JWT, listens to `telemetry_update` event.
-4. In `DashboardScreen.dart`:
-   - Render machine tabs filtered to `assignedMachines`.
-   - Dynamically build UI grid cards from `machine.registers`.
-   - Show Settings (⚙️) only if `role == 'admin' || role == 'user_editor'`.
-   - Show Users (👥) only if `role == 'admin'`.
+### B. Flutter Mobile App (APK):
+1. `AuthService`: Stores JWT in `flutter_secure_storage`.
+2. `SocketService`: Listens for `telemetry_update` events via `socket_io_client`.
+3. `DashboardScreen`: Filters machines by `assignedMachines`, shows dynamic cards for `values`.
 
 ---
 
-## 8. Implementation Steps & Roadmap
+## 7. Execution Roadmap
 
 ```mermaid
 flowchart LR
-    Step1["Step 1\nBackend Project & DB"] --> Step2["Step 2\nAuth & Admin Routes"]
-    Step2 --> Step3["Step 3\nIngestion & Sockets"]
-    Step3 --> Step4["Step 4\nLogging Engine"]
-    Step4 --> Step5["Step 5\nReact Web Migration"]
-    Step5 --> Step6["Step 6\nFlutter App Migration"]
+    S1["1. Initialize Backend\n& MongoDB Atlas"] --> S2["2. Ingestion & Sockets\n(read/ parser)"]
+    S2 --> S3["3. Auth & RBAC\n(3 Roles + Assign)"]
+    S3 --> S4["4. Logging Engine\n& Modbus write/"]
+    S4 --> S5["5. Web & Flutter\nClient Sync"]
 ```
 
-1. **Step 1: Backend Scaffolding & Database**:
-   - Initialize Node.js + Express project in `d:\TAP\Tap-git\Power-Backend`.
-   - Setup SQLite (or PostgreSQL) tables with auto-migration scripts.
-2. **Step 2: Authentication & User Management**:
-   - Implement bcrypt hashing, JWT middleware, and role guards (`requireAdmin`, `requireEditor`).
-   - Implement `/api/auth` and `/api/admin/users` endpoints.
-3. **Step 3: Machine & Dynamic Register CRUD**:
-   - Create machine configuration endpoints.
-   - Allow adding machines and customizing registers per machine.
-4. **Step 4: Telemetry Ingestion, Sockets & Conditional Logging**:
-   - Implement `/api/telemetry/ingest` endpoint.
-   - Setup Socket.IO server with per-machine rooms.
-   - Implement the Admin Logging Switch condition (only writes to DB when enabled).
-5. **Step 5: React Web App Migration**:
-   - Switch React app from Firebase to the custom backend REST + Socket.IO APIs.
-6. **Step 6: Flutter Mobile App Sync**:
-   - Provide Flutter services and sync the mobile APK with the custom backend.
+1. **Step 1**: Initialize `Power-Backend` (Node.js + Express + Mongoose + Socket.IO). Connect to MongoDB Atlas.
+2. **Step 2**: Implement `/api/machines/:machineId/read` to parse the gateway JSON format and stream via WebSockets.
+3. **Step 3**: Implement Auth (JWT, bcrypt) and User Management with the 3 roles (`user`, `user_editor`, `admin`).
+4. **Step 4**: Implement Admin Conditional Logging (with 90-day TTL) and Modbus `write` command dispatcher.
+5. **Step 5**: Point React Web and Flutter Mobile to the new backend.
