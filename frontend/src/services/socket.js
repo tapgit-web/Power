@@ -86,8 +86,10 @@ export const disconnectSocket = () => {
   }
 };
 
-export default {
+const socketService = {
   getSocket,
   subscribeToMachine,
   disconnectSocket,
 };
+
+export default socketService;

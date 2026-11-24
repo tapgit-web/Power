@@ -4,6 +4,8 @@ import { app } from "../../firebase/firebase";
 import { useAuth } from "../../contexts/authContext";
 import { useMachineConfig } from "../../contexts/machineConfigContext";
 import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from "../../constants/telemetryAddresses";
+import { subscribeToMachine } from "../../services/socket";
+import api from "../../services/api";
 
 const database = getDatabase(app);
 
@@ -1017,40 +1019,90 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
   const [machineKeys, setMachineKeys] = useState([]);
   const [allMachineData, setAllMachineData] = useState({});
 
-  // 🔹 Fetch machine keys (supports MC_001, M001, MC001, M_001, etc.)
+  // 🔹 Fetch machine keys (supports SAFC_M33, MC_001, etc. from both Custom Backend and Firebase)
   useEffect(() => {
+    let isMounted = true;
+
+    // A. Query custom backend machines (e.g. SAFC_M33)
+    api.listMachines().then((res) => {
+      if (!isMounted) return;
+      if (res.success && Array.isArray(res.data?.machines)) {
+        const backendKeys = res.data.machines.map((m) => m.machineId || m._id).filter(Boolean);
+        if (backendKeys.length > 0) {
+          setMachineKeys((prev) => {
+            const merged = Array.from(new Set([...prev, ...backendKeys]));
+            return merged.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+          });
+        }
+      }
+    }).catch(() => {});
+
+    // B. Query Firebase RTDB root
     const rootRef = ref(database);
-    return onValue(rootRef, (snapshot) => {
+    const unsubscribeFirebase = onValue(rootRef, (snapshot) => {
+      if (!isMounted) return;
       const rootData = snapshot.val();
       if (!rootData) return;
 
       const keys = Object.keys(rootData)
         .filter((key) => {
-          if (!/^(MC_|MC|M_|M)(?=\d)/i.test(key)) return false;
-          const num = parseInt(key.replace(/^(MC_|MC|M_|M)/i, "").trim(), 10);
-          return !allowedNumbers || allowedNumbers.length === 0 || allowedNumbers.includes(num);
-        })
-        .sort((a, b) => {
-          const numA = parseInt(a.replace(/^(MC_|MC|M_|M)/i, "").trim(), 10) || 0;
-          const numB = parseInt(b.replace(/^(MC_|MC|M_|M)/i, "").trim(), 10) || 0;
-          return numA - numB;
+          if (['power_app_config', 'power_app_users', 'users', 'logs', 'settings'].includes(key)) return false;
+          return /^(SAFC_|MC_|MC|M_|M|[A-Za-z0-9]+_M)/i.test(key);
         });
 
       setMachineKeys((prev) => {
-        if (JSON.stringify(prev) === JSON.stringify(keys)) {
-          return prev;
-        }
-        return keys;
+        const merged = Array.from(new Set([...prev, ...keys]));
+        return merged.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
       });
     });
+
+    return () => {
+      isMounted = false;
+      unsubscribeFirebase();
+    };
   }, [allowedNumbers]);
 
-  // 🔹 Fetch read data for all active machines
+  // 🔹 Fetch read data for all active machines (via both Socket.IO and Firebase)
   useEffect(() => {
     const unsubscribes = [];
 
     machineKeys.forEach((machine) => {
-      // Listen to the machine node directly to support both /{machine} and /{machine}/read structures
+      // 1. Socket.IO stream subscription from Custom Backend
+      const unsubSocket = subscribeToMachine(machine, (packet) => {
+        if (!packet || !packet.values) return;
+        const vals = packet.values;
+
+        const newRecord = {
+          ts: packet.timestamp || Date.now(),
+          v1: vals.R ?? vals.r ?? vals.V1 ?? vals.V_0 ?? null,
+          v2: vals.Y ?? vals.y ?? vals.V2 ?? vals.V_1 ?? null,
+          v3: vals.B ?? vals.b ?? vals.V3 ?? vals.V_2 ?? null,
+          kwh: vals.KWH ?? vals.kwh ?? vals.kWh ?? vals.bottle_count ?? null,
+          frequency: vals.Frequency ?? vals.frequency ?? vals.chiller ?? null,
+          ry: vals.RY ?? vals.ry ?? null,
+          yb: vals.YB ?? vals.yb ?? null,
+          br: vals.BR ?? vals.br ?? null,
+          i1: vals.I1 ?? vals.i1 ?? vals.pump ?? null,
+          i2: vals.I2 ?? vals.i2 ?? vals.comp ?? null,
+          i3: vals.I3 ?? vals.i3 ?? vals.fan ?? null,
+          rawValues: vals,
+        };
+
+        setAllMachineData((prev) => {
+          const prevMachine = prev[machine] || {};
+          const prevRecords = prevMachine.records || [];
+          return {
+            ...prev,
+            [machine]: {
+              ...prevMachine,
+              records: [...prevRecords.slice(-49), newRecord],
+            },
+          };
+        });
+      });
+      unsubscribes.push(unsubSocket);
+
+      // 2. Firebase RTDB stream subscription (fallback/dual mode)
       const machineRef = ref(database, `/${machine}`);
       const unsubRead = onValue(machineRef, (snapshot) => {
         const rawNode = snapshot.val();
@@ -1283,20 +1335,23 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
               10
             );
             const locationName =
-              machineNames[String(machineNumber)] ||
-              machineNames[machineNumber] ||
-              `Machine ${machineNumber}`;
+              machineNames[machine] ||
+              (!isNaN(machineNumber) && machineNames[String(machineNumber)]) ||
+              (!isNaN(machineNumber) && machineNames[machineNumber]) ||
+              machine.replace(/_/g, " ");
 
             const rawSelected =
-              machineAddresses?.[String(machineNumber)] ??
-              machineAddresses?.[machineNumber];
+              machineAddresses?.[machine] ??
+              (!isNaN(machineNumber) && machineAddresses?.[String(machineNumber)]) ??
+              (!isNaN(machineNumber) && machineAddresses?.[machineNumber]);
             const selectedAddresses = Array.isArray(rawSelected)
               ? rawSelected
               : allAddressKeys || DEFAULT_ALL_ADDRESS_KEYS;
 
             const customLabels =
-              machineCustomLabels?.[String(machineNumber)] ||
-              machineCustomLabels?.[machineNumber] ||
+              machineCustomLabels?.[machine] ||
+              (!isNaN(machineNumber) && machineCustomLabels?.[String(machineNumber)]) ||
+              (!isNaN(machineNumber) && machineCustomLabels?.[machineNumber]) ||
               {};
 
             return (

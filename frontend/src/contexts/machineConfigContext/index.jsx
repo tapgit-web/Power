@@ -4,6 +4,7 @@ import { app } from '../../firebase/firebase';
 import { useAuth } from '../authContext';
 import { sanitizeEmailKey } from '../../constants/admins';
 import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from '../../constants/telemetryAddresses';
+import api from '../../services/api';
 
 const database = getDatabase(app);
 
@@ -336,10 +337,25 @@ export const MachineConfigProvider = ({ children }) => {
     return await persistConfig(DEFAULT_MACHINES_CONFIG);
   };
 
-  // Save or update user permissions and assigned machines
+  // Save or update user permissions and assigned machines (in both Custom Backend & Firebase)
   const saveUserPermissions = async ({ email, role = 'user', assignedMachines = [], allMachines = false }) => {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (!cleanEmail) throw new Error('Email is required');
+
+    // 1. Sync with Custom Backend
+    try {
+      await api.createUser({
+        email: cleanEmail,
+        password: 'InitialPassword123',
+        role,
+        assignedMachines,
+        allMachines,
+      });
+    } catch (e) {
+      // ignore if user already exists
+    }
+
+    // 2. Sync with Firebase RTDB
     const emailKey = sanitizeEmailKey(cleanEmail);
     const userRef = ref(database, `${POWER_USERS_PATH}/${emailKey}`);
     const record = {
@@ -357,6 +373,21 @@ export const MachineConfigProvider = ({ children }) => {
   const deleteUserPermissions = async (email) => {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (!cleanEmail) return { success: false, error: 'No email provided' };
+
+    // 1. Sync with Custom Backend
+    try {
+      const usersRes = await api.listUsers();
+      if (usersRes.success && Array.isArray(usersRes.data?.users)) {
+        const target = usersRes.data.users.find((u) => u.email === cleanEmail);
+        if (target && target._id) {
+          await api.deleteUser(target._id);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // 2. Sync with Firebase RTDB
     const emailKey = sanitizeEmailKey(cleanEmail);
     const userRef = ref(database, `${POWER_USERS_PATH}/${emailKey}`);
     await set(userRef, null);

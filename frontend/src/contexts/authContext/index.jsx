@@ -1,8 +1,9 @@
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState, useEffect, useCallback } from "react";
 import { auth, app } from "../../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { getDatabase, ref, onValue } from "firebase/database";
 import { isUserAdmin, sanitizeEmailKey } from "../../constants/admins";
+import api, { getAuthToken } from "../../services/api";
 
 const database = getDatabase(app);
 
@@ -19,37 +20,90 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, initializeUser);
-    return unsubscribe;
+  // Check Custom Backend session on mount
+  const checkBackendSession = useCallback(async () => {
+    const token = getAuthToken();
+    if (!token) return false;
+
+    try {
+      const res = await api.getMe();
+      if (res.success && res.data?.user) {
+        const u = res.data.user;
+        setCurrentUser({ email: u.email, uid: u._id || u.id, ...u });
+        setUserProfile(u);
+        setUserLoggedIn(true);
+        setIsEmailUser(true);
+        setLoading(false);
+        return true;
+      }
+    } catch (err) {
+      console.warn("Could not restore custom backend session:", err.message);
+    }
+    return false;
   }, []);
 
-  async function initializeUser(user) {
-    if (user) {
-      setCurrentUser({ ...user });
+  useEffect(() => {
+    let isMounted = true;
 
-      // check if provider is email and password login
-      const isEmail = user.providerData.some(
-        (provider) => provider.providerId === "password"
-      );
-      setIsEmailUser(isEmail);
-      setUserLoggedIn(true);
-    } else {
-      setCurrentUser(null);
-      setUserLoggedIn(false);
-      setIsEmailUser(false);
-      setUserProfile(null);
-    }
+    // 1. Check custom backend token first
+    checkBackendSession().then((hasSession) => {
+      if (hasSession && isMounted) return;
 
-    setLoading(false);
-  }
+      // 2. If no backend session, listen to Firebase auth
+      const unsubscribeFirebase = onAuthStateChanged(auth, (user) => {
+        if (!isMounted) return;
+        if (user) {
+          setCurrentUser({ ...user });
+          const isEmail = user.providerData.some(
+            (provider) => provider.providerId === "password"
+          );
+          setIsEmailUser(isEmail);
+          setUserLoggedIn(true);
+        } else if (!getAuthToken()) {
+          setCurrentUser(null);
+          setUserLoggedIn(false);
+          setIsEmailUser(false);
+          setUserProfile(null);
+        }
+        setLoading(false);
+      });
 
-  // Subscribe to the logged-in user's profile and assigned machines in RTDB
+      return unsubscribeFirebase;
+    });
+
+    // 3. Listen for local auth-state-change events (from api.login / logout)
+    const handleCustomAuth = (e) => {
+      const user = e.detail?.user;
+      if (user) {
+        setCurrentUser({ email: user.email, uid: user.id || user._id, ...user });
+        setUserProfile(user);
+        setUserLoggedIn(true);
+        setIsEmailUser(true);
+      } else {
+        setCurrentUser(null);
+        setUserProfile(null);
+        setUserLoggedIn(false);
+        setIsEmailUser(false);
+      }
+      setLoading(false);
+    };
+
+    window.addEventListener("auth-state-change", handleCustomAuth);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("auth-state-change", handleCustomAuth);
+    };
+  }, [checkBackendSession]);
+
+  // Subscribe to the logged-in user's profile in Firebase RTDB if Firebase user
   useEffect(() => {
     if (!currentUser || !currentUser.email) {
-      setUserProfile(null);
       return;
     }
+
+    // If profile was already loaded from custom backend, keep it
+    if (userProfile?.role) return;
 
     const emailKey = sanitizeEmailKey(currentUser.email);
     const userRef = ref(database, `power_app_users/${emailKey}`);
@@ -59,17 +113,15 @@ export function AuthProvider({ children }) {
         const val = snapshot.val();
         if (val && typeof val === "object") {
           setUserProfile(val);
-        } else {
-          setUserProfile(null);
         }
       },
       (err) => {
-        console.error("Error reading user profile:", err);
+        console.error("Error reading user profile from Firebase:", err);
       }
     );
 
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, userProfile]);
 
   const isAdmin = currentUser
     ? isUserAdmin(currentUser) || userProfile?.role === "admin"
@@ -78,8 +130,7 @@ export function AuthProvider({ children }) {
   const canEditRegisterNames =
     isAdmin || userProfile?.role === "user_editor";
 
-  // If user is admin or allMachines is true, assignedMachines is null (meaning unrestricted/all)
-  // Otherwise, returns the array of machine numbers (e.g. [1, 2])
+  // If user is admin or allMachines is true, assignedMachines is null (unrestricted)
   const assignedMachines =
     isAdmin || userProfile?.allMachines === true
       ? null
@@ -96,6 +147,7 @@ export function AuthProvider({ children }) {
     canEditRegisterNames,
     userProfile,
     assignedMachines,
+    refreshUserSession: checkBackendSession,
   };
 
   return (
@@ -104,3 +156,5 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   );
 }
+
+export default AuthContext;
