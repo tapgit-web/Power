@@ -1,70 +1,67 @@
-# Getting Started with Create React App
+# THE MONITOR — Industrial IoT Power & PLC Monitoring System
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A full-stack, real-time industrial monitoring and Modbus control platform. Supports multi-machine telemetry, dynamic per-machine register schemas, 3-tier user access control, and Admin-controlled conditional data logging.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## 📁 Project Structure
 
-### `npm start`
+```
+Power/
+├── backend/                  # Node.js + Express + Socket.IO + MongoDB Atlas Server
+│   ├── config/               # Database connection & constants
+│   ├── controllers/          # Ingestion, Auth, Machine, User controllers
+│   ├── middleware/           # JWT & 3-Tier RBAC middleware
+│   ├── models/               # MongoDB models (Machine, User, TelemetryLog, CommandWrite)
+│   ├── routes/               # REST API route handlers
+│   ├── sockets/              # Socket.IO room subscriptions & real-time broadcast
+│   ├── tests/                # Automated verification tests (read ingest & Modbus write)
+│   ├── package.json
+│   └── README.md
+│
+├── frontend/                 # React Web Dashboard
+│   ├── public/               # Static assets & HTML entry
+│   ├── src/                  # React components, contexts, and views
+│   │   ├── components/       # Header, Modals (User/Machine), Chiller Dashboard
+│   │   ├── contexts/         # AuthContext & MachineConfigContext
+│   │   ├── services/         # Custom API (api.js) & Socket.IO (socket.js)
+│   │   └── constants/        # Admin lists & register definitions
+│   ├── package.json
+│   ├── tailwind.config.js
+│   └── postcss.config.js
+│
+├── package.json              # Root project manager & runner
+├── IMPLEMENTATION_PLAN.md    # Detailed technical architecture plan
+└── CHANGES_SUMMARY.md        # Technical changes & Flutter mobile sync guide
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+---
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## 🚀 Running the Project
 
-### `npm test`
+### 1. Run the Backend Server (Port 5000)
+```bash
+npm run start:backend
+# or from inside the backend folder:
+cd backend && npm start
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### 2. Run the Frontend Web Dashboard (Port 3000)
+```bash
+npm run start:frontend
+# or from inside the frontend folder:
+cd frontend && npm start
+```
 
-### `npm run build`
+### 3. Build the Frontend for Production
+```bash
+npm run build:frontend
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+---
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## 📡 Ingestion API (`read`) & Modbus Control (`write`)
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+* **Ingestion URL**: `POST http://<SERVER_IP>:5000/api/machines/:machineId/read` (e.g. `SAFC_M33`)
+* **Control URL**: `POST http://<SERVER_IP>:5000/api/machines/:machineId/write` (Dispatches `do_mb_write`)
+* **Realtime Sockets**: `ws://<SERVER_IP>:5000`
