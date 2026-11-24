@@ -19,14 +19,14 @@ const login = async (req, res) => {
     // Seed default admin if it doesn't exist yet
     if (!user && normalizedEmail === DEFAULT_ADMIN_EMAIL) {
       const defaultPassword = process.env.ADMIN_INITIAL_PASSWORD || 'admin123';
-      if (password === defaultPassword || password.length >= 6) {
-        const passwordHash = await User.hashPassword(password);
+      if (password === defaultPassword) {
+        const passwordHash = await User.hashPassword(defaultPassword);
         user = await User.create({
           email: normalizedEmail,
           passwordHash,
           role: ROLES.ADMIN,
           allMachines: true,
-          assignedMachines: [],
+          assignedMachines: ['TAP001'],
         });
         console.log(`👑 [Auth] Default admin created: ${normalizedEmail}`);
       }
