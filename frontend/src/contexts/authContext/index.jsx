@@ -1,11 +1,6 @@
 import React, { useContext, useState, useEffect, useCallback } from "react";
-import { auth, app } from "../../firebase/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { getDatabase, ref, onValue } from "firebase/database";
-import { isUserAdmin, sanitizeEmailKey } from "../../constants/admins";
-import api, { getAuthToken } from "../../services/api";
-
-const database = getDatabase(app);
+import { isUserAdmin } from "../../constants/admins";
+import api, { getAuthToken, setAuthToken } from "../../services/api";
 
 const AuthContext = React.createContext();
 
@@ -20,10 +15,17 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
 
-  // Check Custom Backend session on mount
+  // Check Custom Backend session on mount / token refresh
   const checkBackendSession = useCallback(async () => {
     const token = getAuthToken();
-    if (!token) return false;
+    if (!token) {
+      setCurrentUser(null);
+      setUserProfile(null);
+      setUserLoggedIn(false);
+      setIsEmailUser(false);
+      setLoading(false);
+      return false;
+    }
 
     try {
       const res = await api.getMe();
@@ -35,44 +37,32 @@ export function AuthProvider({ children }) {
         setIsEmailUser(true);
         setLoading(false);
         return true;
+      } else {
+        // Token expired or invalid
+        setAuthToken(null);
+        setCurrentUser(null);
+        setUserProfile(null);
+        setUserLoggedIn(false);
+        setIsEmailUser(false);
+        setLoading(false);
+        return false;
       }
     } catch (err) {
       console.warn("Could not restore custom backend session:", err.message);
+      setLoading(false);
+      return false;
     }
-    return false;
   }, []);
 
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Check custom backend token first
-    checkBackendSession().then((hasSession) => {
-      if (hasSession && isMounted) return;
+    // Check custom backend JWT token on mount
+    checkBackendSession();
 
-      // 2. If no backend session, listen to Firebase auth
-      const unsubscribeFirebase = onAuthStateChanged(auth, (user) => {
-        if (!isMounted) return;
-        if (user) {
-          setCurrentUser({ ...user });
-          const isEmail = user.providerData.some(
-            (provider) => provider.providerId === "password"
-          );
-          setIsEmailUser(isEmail);
-          setUserLoggedIn(true);
-        } else if (!getAuthToken()) {
-          setCurrentUser(null);
-          setUserLoggedIn(false);
-          setIsEmailUser(false);
-          setUserProfile(null);
-        }
-        setLoading(false);
-      });
-
-      return unsubscribeFirebase;
-    });
-
-    // 3. Listen for local auth-state-change events (from api.login / logout)
+    // Listen for custom auth events dispatched by api.login / api.logout
     const handleCustomAuth = (e) => {
+      if (!isMounted) return;
       const user = e.detail?.user;
       if (user) {
         setCurrentUser({ email: user.email, uid: user.id || user._id, ...user });
@@ -96,33 +86,6 @@ export function AuthProvider({ children }) {
     };
   }, [checkBackendSession]);
 
-  // Subscribe to the logged-in user's profile in Firebase RTDB if Firebase user
-  useEffect(() => {
-    if (!currentUser || !currentUser.email) {
-      return;
-    }
-
-    // If profile was already loaded from custom backend, keep it
-    if (userProfile?.role) return;
-
-    const emailKey = sanitizeEmailKey(currentUser.email);
-    const userRef = ref(database, `power_app_users/${emailKey}`);
-    const unsubscribe = onValue(
-      userRef,
-      (snapshot) => {
-        const val = snapshot.val();
-        if (val && typeof val === "object") {
-          setUserProfile(val);
-        }
-      },
-      (err) => {
-        console.error("Error reading user profile from Firebase:", err);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [currentUser, userProfile]);
-
   const isAdmin = currentUser
     ? isUserAdmin(currentUser) || userProfile?.role === "admin"
     : false;
@@ -130,7 +93,7 @@ export function AuthProvider({ children }) {
   const canEditRegisterNames =
     isAdmin || userProfile?.role === "user_editor";
 
-  // If user is admin or allMachines is true, assignedMachines is null (unrestricted)
+  // If user is admin or allMachines is true, assignedMachines is null (unrestricted access)
   const assignedMachines =
     isAdmin || userProfile?.allMachines === true
       ? null
@@ -156,5 +119,3 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   );
 }
-
-export default AuthContext;

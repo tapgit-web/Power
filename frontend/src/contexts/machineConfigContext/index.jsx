@@ -1,17 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { getDatabase, ref, onValue, set } from 'firebase/database';
-import { app } from '../../firebase/firebase';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../authContext';
 import { sanitizeEmailKey } from '../../constants/admins';
 import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from '../../constants/telemetryAddresses';
 import api from '../../services/api';
 
-const database = getDatabase(app);
-
-// Dedicated Firebase Realtime Database paths for Power Monitor project
-const POWER_CONFIG_PATH = 'power_app_config/machines';
-const CUSTOM_REGISTERS_PATH = 'power_app_config/custom_registers';
-const POWER_USERS_PATH = 'power_app_users';
+const CUSTOM_REG_STORAGE_KEY = 'power_monitor_custom_registers';
 
 // Dedicated baseline defaults for Power Monitoring machines
 export const DEFAULT_MACHINES_CONFIG = {
@@ -41,47 +34,98 @@ export const useMachineConfig = () => {
 };
 
 export const MachineConfigProvider = ({ children }) => {
-  const { isAdmin, assignedMachines } = useAuth();
+  const { isAdmin, assignedMachines, userLoggedIn } = useAuth();
   const [machinesConfig, setMachinesConfig] = useState(DEFAULT_MACHINES_CONFIG);
-  const [customRegisters, setCustomRegisters] = useState({});
+  const [customRegisters, setCustomRegisters] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CUSTOM_REG_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [allUsers, setAllUsers] = useState({});
   const [isSyncedWithCloud, setIsSyncedWithCloud] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Subscribe to `/power_app_users` for Admins
-  useEffect(() => {
-    if (!isAdmin) return;
-    const usersRef = ref(database, POWER_USERS_PATH);
-    const unsubscribe = onValue(
-      usersRef,
-      (snapshot) => {
-        const val = snapshot.val();
-        setAllUsers(val && typeof val === 'object' ? val : {});
-      },
-      (error) => {
-        console.error('Error fetching users from Firebase:', error);
+  // Fetch users from Custom Backend (Admin only)
+  const refreshUsers = useCallback(async () => {
+    if (!isAdmin || !userLoggedIn) return;
+    try {
+      const res = await api.listUsers();
+      if (res.success && Array.isArray(res.data?.users)) {
+        const usersObj = {};
+        res.data.users.forEach((u) => {
+          const emailKey = sanitizeEmailKey(u.email);
+          usersObj[emailKey] = {
+            _id: u._id,
+            id: u._id,
+            email: u.email,
+            role: u.role,
+            assignedMachines: u.assignedMachines || [],
+            allMachines: Boolean(u.allMachines),
+            createdAt: u.createdAt,
+          };
+        });
+        setAllUsers(usersObj);
       }
-    );
-    return () => unsubscribe();
-  }, [isAdmin]);
+    } catch (err) {
+      console.warn('Could not fetch users from custom backend:', err.message);
+    }
+  }, [isAdmin, userLoggedIn]);
 
-  // Subscribe to Firebase RTDB node `/power_app_config/custom_registers`
   useEffect(() => {
-    const customRegRef = ref(database, CUSTOM_REGISTERS_PATH);
-    const unsubscribe = onValue(
-      customRegRef,
-      (snapshot) => {
-        const val = snapshot.val();
-        setCustomRegisters(val && typeof val === 'object' ? val : {});
-      },
-      (error) => {
-        console.error('Error fetching custom registers from Firebase:', error);
-      }
-    );
-    return () => unsubscribe();
-  }, []);
+    refreshUsers();
+  }, [refreshUsers]);
 
-  // Combined list of built-in addresses + cloud custom registers
+  // Fetch machines from Custom Backend (MongoDB Atlas)
+  const refreshMachines = useCallback(async () => {
+    if (!userLoggedIn) {
+      setIsLoading(false);
+      return;
+    }
+    try {
+      const res = await api.listMachines();
+      if (res.success && Array.isArray(res.data?.machines)) {
+        const backendMachines = res.data.machines;
+        const newConfig = { ...DEFAULT_MACHINES_CONFIG };
+
+        backendMachines.forEach((m) => {
+          const cat = m.category || 'power_meters';
+          if (!newConfig[cat]) {
+            newConfig[cat] = {
+              label: cat.replace(/_/g, ' ').toUpperCase(),
+              allowed: [],
+              names: {},
+              addresses: {},
+              customLabels: {},
+            };
+          }
+
+          const mKey = m.machineId || m._id;
+          if (!newConfig[cat].allowed.includes(mKey)) {
+            newConfig[cat].allowed.push(mKey);
+          }
+          newConfig[cat].names[mKey] = m.displayName || mKey;
+          newConfig[cat].addresses[mKey] = DEFAULT_ALL_ADDRESS_KEYS;
+          newConfig[cat].customLabels[mKey] = m.customLabels || {};
+        });
+
+        setMachinesConfig(newConfig);
+        setIsSyncedWithCloud(true);
+      }
+    } catch (err) {
+      console.warn('Could not fetch machines from custom backend:', err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userLoggedIn]);
+
+  useEffect(() => {
+    refreshMachines();
+  }, [refreshMachines]);
+
+  // Combined list of built-in addresses + custom registers
   const allTelemetryAddresses = useMemo(() => {
     const map = new Map();
     ALL_TELEMETRY_ADDRESSES.forEach((item) => {
@@ -105,196 +149,73 @@ export const MachineConfigProvider = ({ children }) => {
 
   const allAddressKeys = useMemo(() => allTelemetryAddresses.map((a) => a.key), [allTelemetryAddresses]);
 
-  // Subscribe to Firebase RTDB node `/power_app_config/machines`
-  useEffect(() => {
-    const configRef = ref(database, POWER_CONFIG_PATH);
-    const unsubscribe = onValue(configRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data && typeof data === 'object') {
-        const merged = {};
-        // Merge known default categories
-        Object.keys(DEFAULT_MACHINES_CONFIG).forEach((key) => {
-          merged[key] = {
-            ...DEFAULT_MACHINES_CONFIG[key],
-            ...(data[key] || {}),
-            allowed: Array.isArray(data[key]?.allowed)
-              ? data[key].allowed
-              : DEFAULT_MACHINES_CONFIG[key].allowed,
-            names: data[key]?.names || DEFAULT_MACHINES_CONFIG[key].names,
-            addresses: data[key]?.addresses || DEFAULT_MACHINES_CONFIG[key].addresses || {},
-            customLabels: data[key]?.customLabels || DEFAULT_MACHINES_CONFIG[key].customLabels || {}
-          };
-        });
-        // Include any additional custom categories configured in the cloud
-        Object.keys(data).forEach((key) => {
-          if (!merged[key] && typeof data[key] === 'object') {
-            merged[key] = {
-              label: data[key].label || key,
-              allowed: Array.isArray(data[key].allowed) ? data[key].allowed : [],
-              names: data[key].names || {},
-              addresses: data[key].addresses || {},
-              customLabels: data[key].customLabels || {}
-            };
-          }
-        });
-        setMachinesConfig(merged);
-        setIsSyncedWithCloud(true);
-      } else {
-        // No custom data stored in cloud yet
-        setMachinesConfig(DEFAULT_MACHINES_CONFIG);
-        setIsSyncedWithCloud(false);
-      }
-      setIsLoading(false);
-    }, (error) => {
-      console.error('Error fetching machine config from Firebase:', error);
-      setIsLoading(false);
+  // Add a new machine to backend
+  const addMachine = async (categoryKey, machineNumber, machineName, selectedAddresses = null) => {
+    const machineIdStr = String(machineNumber).trim();
+    if (!machineIdStr) throw new Error('Machine identifier is required');
+    const nameStr = (machineName || '').trim() || `Machine ${machineIdStr}`;
+
+    const res = await api.createMachine({
+      machineId: machineIdStr,
+      displayName: nameStr,
+      category: categoryKey || 'power_meters',
     });
 
-    return () => unsubscribe();
-  }, []);
-
-  // Helper to persist current/updated configuration to Firebase
-  const persistConfig = async (newConfig) => {
-    try {
-      const configRef = ref(database, POWER_CONFIG_PATH);
-      await set(configRef, newConfig);
-      setMachinesConfig(newConfig);
-      setIsSyncedWithCloud(true);
-      return { success: true };
-    } catch (error) {
-      console.error('Error saving machine config to Firebase:', error);
-      return { success: false, error: error.message };
+    if (!res.success) {
+      throw new Error(res.error || 'Failed to create machine');
     }
-  };
 
-  // Add a new machine number, name, and optional selected addresses to a category
-  const addMachine = async (categoryKey, machineNumber, machineName, selectedAddresses = null) => {
-    const num = parseInt(machineNumber, 10);
-    if (isNaN(num)) throw new Error('Machine number must be a valid number');
-    const nameStr = (machineName || '').trim() || `Machine ${num}`;
-
-    const currentCat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG[categoryKey];
-    const currentAllowed = currentCat.allowed || [];
-    const currentNames = currentCat.names || {};
-    const currentAddresses = currentCat.addresses || {};
-    const currentCustomLabels = currentCat.customLabels || {};
-
-    const updatedAllowed = currentAllowed.includes(num)
-      ? currentAllowed
-      : [...currentAllowed, num].sort((a, b) => a - b);
-
-    const updatedNames = {
-      ...currentNames,
-      [String(num)]: nameStr
-    };
-
-    const updatedAddresses = {
-      ...currentAddresses,
-      [String(num)]: Array.isArray(selectedAddresses) && selectedAddresses.length > 0
-        ? selectedAddresses
-        : DEFAULT_ALL_ADDRESS_KEYS
-    };
-
-    const updatedCustomLabels = {
-      ...currentCustomLabels,
-      [String(num)]: {}
-    };
-
-    const updatedConfig = {
-      ...machinesConfig,
-      [categoryKey]: {
-        ...currentCat,
-        allowed: updatedAllowed,
-        names: updatedNames,
-        addresses: updatedAddresses,
-        customLabels: updatedCustomLabels
-      }
-    };
-
-    return await persistConfig(updatedConfig);
+    await refreshMachines();
+    return { success: true };
   };
 
   // Update existing machine name
   const updateMachineName = async (categoryKey, machineNumber, newName) => {
-    const num = parseInt(machineNumber, 10);
+    const machineIdStr = String(machineNumber).trim();
     const nameStr = (newName || '').trim();
 
-    const currentCat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG[categoryKey];
-    const updatedNames = {
-      ...currentCat.names,
-      [String(num)]: nameStr
-    };
+    const res = await api.updateMachine(machineIdStr, {
+      displayName: nameStr,
+      category: categoryKey,
+    });
 
-    const updatedConfig = {
-      ...machinesConfig,
-      [categoryKey]: {
-        ...currentCat,
-        names: updatedNames
-      }
-    };
+    if (!res.success) {
+      throw new Error(res.error || 'Failed to update machine name');
+    }
 
-    return await persistConfig(updatedConfig);
+    await refreshMachines();
+    return { success: true };
   };
 
   // Update selected register addresses and custom register labels for a machine
   const updateMachineAddresses = async (categoryKey, machineNumber, addressKeys, customLabels = null) => {
-    const num = parseInt(machineNumber, 10);
-    const currentCat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG[categoryKey];
-    const currentAddresses = currentCat.addresses || {};
-    const currentCustomLabels = currentCat.customLabels || {};
+    const machineIdStr = String(machineNumber).trim();
 
-    const updatedAddresses = {
-      ...currentAddresses,
-      [String(num)]: Array.isArray(addressKeys) ? addressKeys : DEFAULT_ALL_ADDRESS_KEYS
-    };
-
-    const updatedCustomLabels = {
-      ...currentCustomLabels,
-      ...(customLabels !== null ? { [String(num)]: customLabels } : {})
-    };
-
-    const updatedConfig = {
-      ...machinesConfig,
-      [categoryKey]: {
-        ...currentCat,
-        addresses: updatedAddresses,
-        customLabels: updatedCustomLabels
+    if (customLabels !== null) {
+      const res = await api.updateCustomLabels(machineIdStr, customLabels);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update register labels');
       }
-    };
+    }
 
-    return await persistConfig(updatedConfig);
+    await refreshMachines();
+    return { success: true };
   };
 
-  // Remove a machine from allowed list, names, addresses, and custom labels
+  // Remove a machine from custom backend
   const removeMachine = async (categoryKey, machineNumber) => {
-    const num = parseInt(machineNumber, 10);
-    const currentCat = machinesConfig[categoryKey] || DEFAULT_MACHINES_CONFIG[categoryKey];
+    const machineIdStr = String(machineNumber).trim();
+    const res = await api.deleteMachine(machineIdStr);
 
-    const updatedAllowed = (currentCat.allowed || []).filter((n) => n !== num);
-    const updatedNames = { ...(currentCat.names || {}) };
-    delete updatedNames[String(num)];
+    if (!res.success) {
+      throw new Error(res.error || 'Failed to delete machine');
+    }
 
-    const updatedAddresses = { ...(currentCat.addresses || {}) };
-    delete updatedAddresses[String(num)];
-
-    const updatedCustomLabels = { ...(currentCat.customLabels || {}) };
-    delete updatedCustomLabels[String(num)];
-
-    const updatedConfig = {
-      ...machinesConfig,
-      [categoryKey]: {
-        ...currentCat,
-        allowed: updatedAllowed,
-        names: updatedNames,
-        addresses: updatedAddresses,
-        customLabels: updatedCustomLabels
-      }
-    };
-
-    return await persistConfig(updatedConfig);
+    await refreshMachines();
+    return { success: true };
   };
 
-  // Add or update a custom telemetry register in Firebase RTDB
+  // Add or update a custom telemetry register
   const addCustomRegister = async ({ key, name, unit, group }) => {
     const cleanKey = (key || '').trim();
     if (!cleanKey) throw new Error('Register key is required');
@@ -309,63 +230,78 @@ export const MachineConfigProvider = ({ children }) => {
       createdAt: Date.now()
     };
 
-    const itemRef = ref(database, `${CUSTOM_REGISTERS_PATH}/${cleanKey}`);
-    await set(itemRef, regObj);
+    setCustomRegisters((prev) => {
+      const updated = { ...prev, [cleanKey]: regObj };
+      try {
+        localStorage.setItem(CUSTOM_REG_STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
     return { success: true };
   };
 
-  // Remove a custom register from Firebase RTDB
+  // Remove a custom register
   const removeCustomRegister = async (regKey) => {
     const cleanKey = (regKey || '').trim();
     if (!cleanKey) return { success: false, error: 'No key provided' };
-    const itemRef = ref(database, `${CUSTOM_REGISTERS_PATH}/${cleanKey}`);
-    await set(itemRef, null);
+
+    setCustomRegisters((prev) => {
+      const updated = { ...prev };
+      delete updated[cleanKey];
+      try {
+        localStorage.setItem(CUSTOM_REG_STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
     return { success: true };
   };
 
   // Reset a category back to original defaults
   const resetCategoryToDefault = async (categoryKey) => {
-    const updatedConfig = {
-      ...machinesConfig,
-      [categoryKey]: DEFAULT_MACHINES_CONFIG[categoryKey]
-    };
-    return await persistConfig(updatedConfig);
+    setMachinesConfig((prev) => ({
+      ...prev,
+      [categoryKey]: DEFAULT_MACHINES_CONFIG[categoryKey] || { allowed: [], names: {}, addresses: {}, customLabels: {} }
+    }));
+    return { success: true };
   };
 
-  // Seed cloud database with all defaults
+  // Seed defaults
   const syncDefaultsToCloud = async () => {
-    return await persistConfig(DEFAULT_MACHINES_CONFIG);
+    await refreshMachines();
+    return { success: true };
   };
 
-  // Save or update user permissions and assigned machines (in both Custom Backend & Firebase)
+  // Save or update user permissions and assigned machines
   const saveUserPermissions = async ({ email, role = 'user', assignedMachines = [], allMachines = false }) => {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (!cleanEmail) throw new Error('Email is required');
 
-    // 1. Sync with Custom Backend
-    try {
-      await api.createUser({
+    // Check if user already exists in allUsers
+    const existing = Object.values(allUsers).find(
+      (u) => (u.email || '').toLowerCase() === cleanEmail
+    );
+
+    if (existing && existing._id) {
+      const res = await api.updateUser(existing._id, {
+        role,
+        assignedMachines,
+        allMachines: Boolean(allMachines),
+      });
+      if (!res.success) throw new Error(res.error || 'Failed to update user');
+    } else {
+      const res = await api.createUser({
         email: cleanEmail,
         password: 'InitialPassword123',
         role,
         assignedMachines,
-        allMachines,
+        allMachines: Boolean(allMachines),
       });
-    } catch (e) {
-      // ignore if user already exists
+      if (!res.success) throw new Error(res.error || 'Failed to create user');
     }
 
-    // 2. Sync with Firebase RTDB
-    const emailKey = sanitizeEmailKey(cleanEmail);
-    const userRef = ref(database, `${POWER_USERS_PATH}/${emailKey}`);
-    const record = {
-      email: cleanEmail,
-      role: role || 'user',
-      assignedMachines: Array.isArray(assignedMachines) ? assignedMachines : [],
-      allMachines: Boolean(allMachines),
-      updatedAt: Date.now(),
-    };
-    await set(userRef, record);
+    await refreshUsers();
     return { success: true };
   };
 
@@ -374,23 +310,16 @@ export const MachineConfigProvider = ({ children }) => {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (!cleanEmail) return { success: false, error: 'No email provided' };
 
-    // 1. Sync with Custom Backend
-    try {
-      const usersRes = await api.listUsers();
-      if (usersRes.success && Array.isArray(usersRes.data?.users)) {
-        const target = usersRes.data.users.find((u) => u.email === cleanEmail);
-        if (target && target._id) {
-          await api.deleteUser(target._id);
-        }
-      }
-    } catch (e) {
-      // ignore
+    const target = Object.values(allUsers).find(
+      (u) => (u.email || '').toLowerCase() === cleanEmail
+    );
+
+    if (target && target._id) {
+      const res = await api.deleteUser(target._id);
+      if (!res.success) return { success: false, error: res.error };
     }
 
-    // 2. Sync with Firebase RTDB
-    const emailKey = sanitizeEmailKey(cleanEmail);
-    const userRef = ref(database, `${POWER_USERS_PATH}/${emailKey}`);
-    await set(userRef, null);
+    await refreshUsers();
     return { success: true };
   };
 
@@ -406,7 +335,9 @@ export const MachineConfigProvider = ({ children }) => {
     // Filter machines by assignedMachines if user is not admin
     let effectiveAllowed = baseAllowed;
     if (!isAdmin && Array.isArray(assignedMachines)) {
-      effectiveAllowed = baseAllowed.filter((num) => assignedMachines.includes(num));
+      effectiveAllowed = baseAllowed.filter((num) =>
+        assignedMachines.includes(num) || assignedMachines.includes(String(num))
+      );
     }
 
     return {
@@ -439,7 +370,8 @@ export const MachineConfigProvider = ({ children }) => {
     addCustomRegister,
     removeCustomRegister,
     saveUserPermissions,
-    deleteUserPermissions
+    deleteUserPermissions,
+    refreshMachines,
   };
 
   return (

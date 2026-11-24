@@ -4,6 +4,7 @@ const {
   listMachines,
   getMachine,
   createMachine,
+  updateMachine,
   deleteMachine,
   updateCustomLabels,
   toggleMachineLogging,
@@ -23,8 +24,9 @@ router.use(requireAuth);
 router.get('/', listMachines);
 router.get('/:machineId', getMachine);
 
-// Machine Creation and Deletion (Admin only)
+// Machine Creation, Update and Deletion (Admin only)
 router.post('/', requireAdmin, createMachine);
+router.put('/:machineId', requireAdmin, updateMachine);
 router.delete('/:machineId', requireAdmin, deleteMachine);
 
 // Edit register labels (Admin or user_editor for assigned machine)

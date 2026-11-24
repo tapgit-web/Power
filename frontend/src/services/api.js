@@ -47,6 +47,17 @@ export const api = {
     return result;
   },
 
+  register: async (email, password) => {
+    const result = await request('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    if (result.success && result.data?.token) {
+      setAuthToken(result.data.token);
+    }
+    return result;
+  },
+
   getMe: async () => request('/api/auth/me'),
 
   logout: () => {
@@ -82,6 +93,12 @@ export const api = {
     request('/api/machines', {
       method: 'POST',
       body: JSON.stringify({ machineId, displayName, category, deviceId }),
+    }),
+
+  updateMachine: async (machineId, { displayName, category, deviceId }) =>
+    request(`/api/machines/${machineId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ displayName, category, deviceId }),
     }),
 
   deleteMachine: async (machineId) =>

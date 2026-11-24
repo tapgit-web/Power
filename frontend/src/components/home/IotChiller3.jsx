@@ -1,13 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { getDatabase, ref, onValue } from "firebase/database";
-import { app } from "../../firebase/firebase";
 import { useAuth } from "../../contexts/authContext";
 import { useMachineConfig } from "../../contexts/machineConfigContext";
 import { ALL_TELEMETRY_ADDRESSES, DEFAULT_ALL_ADDRESS_KEYS } from "../../constants/telemetryAddresses";
 import { subscribeToMachine } from "../../services/socket";
 import api from "../../services/api";
-
-const database = getDatabase(app);
 
 const formatTS = (ts) => {
   if (!ts) return "-";
@@ -1019,11 +1015,11 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
   const [machineKeys, setMachineKeys] = useState([]);
   const [allMachineData, setAllMachineData] = useState({});
 
-  // 🔹 Fetch machine keys (supports SAFC_M33, MC_001, etc. from both Custom Backend and Firebase)
+  // 🔹 Fetch machine keys & initial snapshots from Custom Backend
   useEffect(() => {
     let isMounted = true;
 
-    // A. Query custom backend machines (e.g. SAFC_M33)
+    // Query custom backend machines (e.g. TAP001, SAFC_M33)
     api.listMachines().then((res) => {
       if (!isMounted) return;
       if (res.success && Array.isArray(res.data?.machines)) {
@@ -1034,40 +1030,49 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
             return merged.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
           });
         }
+
+        // Populate initial telemetry state from latestValues stored in MongoDB Atlas
+        setAllMachineData((prev) => {
+          const updated = { ...prev };
+          res.data.machines.forEach((m) => {
+            const mKey = m.machineId || m._id;
+            if (m.latestValues && !updated[mKey]?.records?.length) {
+              const vals = m.latestValues;
+              const initialRecord = {
+                ts: m.lastSeen ? new Date(m.lastSeen).getTime() : Date.now(),
+                v1: vals.R ?? vals.r ?? vals.V1 ?? vals.V_0 ?? null,
+                v2: vals.Y ?? vals.y ?? vals.V2 ?? vals.V_1 ?? null,
+                v3: vals.B ?? vals.b ?? vals.V3 ?? vals.V_2 ?? null,
+                kwh: vals.KWH ?? vals.kwh ?? vals.kWh ?? vals.bottle_count ?? null,
+                frequency: vals.Frequency ?? vals.frequency ?? vals.chiller ?? null,
+                ry: vals.RY ?? vals.ry ?? null,
+                yb: vals.YB ?? vals.yb ?? null,
+                br: vals.BR ?? vals.br ?? null,
+                i1: vals.I1 ?? vals.i1 ?? vals.pump ?? null,
+                i2: vals.I2 ?? vals.i2 ?? vals.comp ?? null,
+                i3: vals.I3 ?? vals.i3 ?? vals.fan ?? null,
+                rawValues: vals,
+              };
+              updated[mKey] = {
+                records: [initialRecord],
+              };
+            }
+          });
+          return updated;
+        });
       }
     }).catch(() => {});
 
-    // B. Query Firebase RTDB root
-    const rootRef = ref(database);
-    const unsubscribeFirebase = onValue(rootRef, (snapshot) => {
-      if (!isMounted) return;
-      const rootData = snapshot.val();
-      if (!rootData) return;
-
-      const keys = Object.keys(rootData)
-        .filter((key) => {
-          if (['power_app_config', 'power_app_users', 'users', 'logs', 'settings'].includes(key)) return false;
-          return /^(SAFC_|MC_|MC|M_|M|[A-Za-z0-9]+_M)/i.test(key);
-        });
-
-      setMachineKeys((prev) => {
-        const merged = Array.from(new Set([...prev, ...keys]));
-        return merged.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-      });
-    });
-
     return () => {
       isMounted = false;
-      unsubscribeFirebase();
     };
   }, [allowedNumbers]);
 
-  // 🔹 Fetch read data for all active machines (via both Socket.IO and Firebase)
+  // 🔹 Real-time telemetry streaming via Socket.IO
   useEffect(() => {
     const unsubscribes = [];
 
     machineKeys.forEach((machine) => {
-      // 1. Socket.IO stream subscription from Custom Backend
       const unsubSocket = subscribeToMachine(machine, (packet) => {
         if (!packet || !packet.values) return;
         const vals = packet.values;
@@ -1101,153 +1106,6 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
         });
       });
       unsubscribes.push(unsubSocket);
-
-      // 2. Firebase RTDB stream subscription (fallback/dual mode)
-      const machineRef = ref(database, `/${machine}`);
-      const unsubRead = onValue(machineRef, (snapshot) => {
-        const rawNode = snapshot.val();
-        if (!rawNode) return;
-
-        // Support data located at /{machine}/read or directly under /{machine}
-        const raw =
-          rawNode.read !== undefined && typeof rawNode.read === "object"
-            ? rawNode.read
-            : rawNode;
-
-        const isDirectTelemetry = (obj) =>
-          obj &&
-          typeof obj === "object" &&
-          (obj.R !== undefined ||
-            obj.r !== undefined ||
-            obj.Y !== undefined ||
-            obj.y !== undefined ||
-            obj.B !== undefined ||
-            obj.b !== undefined ||
-            obj.BR !== undefined ||
-            obj.RY !== undefined ||
-            obj.YB !== undefined ||
-            obj.I1 !== undefined ||
-            obj.I2 !== undefined ||
-            obj.I3 !== undefined ||
-            obj.V1 !== undefined ||
-            obj.v1 !== undefined ||
-            obj.V_0 !== undefined ||
-            obj.KWH !== undefined ||
-            obj.kwh !== undefined ||
-            obj.Frequency !== undefined ||
-            obj.W !== undefined ||
-            obj.w !== undefined ||
-            obj.PF !== undefined ||
-            obj.pf !== undefined ||
-            obj.values !== undefined);
-
-        // Normalize device data into an array of items
-        let rawItems = [];
-        if (isDirectTelemetry(raw)) {
-          rawItems = [raw];
-        } else if (Array.isArray(raw)) {
-          rawItems = raw;
-        } else if (typeof raw === "object") {
-          const firstKey = Object.keys(raw)[0];
-          const firstVal = raw[firstKey];
-          if (Array.isArray(firstVal)) {
-            rawItems = firstVal;
-          } else if (firstVal && typeof firstVal === "object" && isDirectTelemetry(firstVal)) {
-            rawItems = Object.values(raw);
-          } else if (firstVal && typeof firstVal === "object") {
-            const nestedVals = Object.values(firstVal);
-            rawItems = nestedVals.length > 0 ? nestedVals : Object.values(raw);
-          } else {
-            rawItems = [raw];
-          }
-        }
-
-        const records = rawItems
-          .map((item) => {
-            if (!item || typeof item !== "object") return null;
-
-            const ts = item.ts ?? item.timestamp ?? item.time ?? null;
-            const values =
-              item.values && typeof item.values === "object" ? item.values : item;
-
-            let v1 = null;
-            let v2 = null;
-            let v3 = null;
-
-            if (values) {
-              // 1. Check R, Y, B (3-Phase color standard: Red, Yellow, Blue from energy meters)
-              if (
-                values.R !== undefined ||
-                values.r !== undefined ||
-                values.Y !== undefined ||
-                values.y !== undefined ||
-                values.B !== undefined ||
-                values.b !== undefined
-              ) {
-                v1 = values.R ?? values.r ?? null;
-                v2 = values.Y ?? values.y ?? null;
-                v3 = values.B ?? values.b ?? null;
-              }
-              // 2. Check 0-indexed voltages (V_0, V_1, V_2 or V0, V1, V2)
-              else if (
-                values.V_0 !== undefined ||
-                values.v_0 !== undefined ||
-                values.V0 !== undefined ||
-                values.v0 !== undefined
-              ) {
-                v1 = values.V_0 ?? values.v_0 ?? values.V0 ?? values.v0;
-                v2 = values.V_1 ?? values.v_1 ?? values.V1 ?? values.v1;
-                v3 = values.V_2 ?? values.v_2 ?? values.V2 ?? values.v2;
-              }
-              // 3. Check 1-indexed voltages (V1, V2, V3 or V_1, V_2, V_3)
-              else {
-                v1 = values.V1 ?? values.v1 ?? values.V_1 ?? values.v_1 ?? null;
-                v2 = values.V2 ?? values.v2 ?? values.V_2 ?? values.v_2 ?? null;
-                v3 = values.V3 ?? values.v3 ?? values.V_3 ?? values.v_3 ?? null;
-              }
-            }
-
-            const kwh =
-              values?.KWH ?? values?.kwh ?? values?.kWh ?? values?.Kwh ?? values?.energy ?? null;
-
-            const frequency =
-              values?.Frequency ?? values?.frequency ?? values?.freq ?? values?.Freq ?? null;
-
-            const ry = values?.RY ?? values?.ry ?? values?.Ry ?? null;
-            const yb = values?.YB ?? values?.yb ?? values?.Yb ?? null;
-            const br = values?.BR ?? values?.br ?? values?.Br ?? null;
-
-            const i1 = values?.I1 ?? values?.i1 ?? values?.I_1 ?? null;
-            const i2 = values?.I2 ?? values?.i2 ?? values?.I_2 ?? null;
-            const i3 = values?.I3 ?? values?.i3 ?? values?.I_3 ?? null;
-
-            return {
-              ts,
-              v1,
-              v2,
-              v3,
-              kwh,
-              frequency,
-              ry,
-              yb,
-              br,
-              i1,
-              i2,
-              i3,
-              rawValues: values || {},
-            };
-          })
-          .filter(Boolean);
-
-        setAllMachineData((prev) => ({
-          ...prev,
-          [machine]: {
-            ...(prev[machine] || {}),
-            records,
-          },
-        }));
-      });
-      unsubscribes.push(unsubRead);
     });
 
     return () => {

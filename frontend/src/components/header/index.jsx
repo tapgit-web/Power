@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/authContext'
-import { doSignOut } from '../../firebase/auth'
+import { doSignOut } from '../../services/auth'
 import { MachineManagerModal } from '../common/MachineManagerModal'
 import { UserManagerModal } from '../common/UserManagerModal'
 

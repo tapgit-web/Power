@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useMachineConfig } from '../../contexts/machineConfigContext';
-import { adminCreateUser } from '../../firebase/auth';
+import { adminCreateUser } from '../../services/auth';
 import { ADMIN_EMAILS } from '../../constants/admins';
 
 export const UserManagerModal = ({ isOpen, onClose }) => {
@@ -143,16 +143,16 @@ export const UserManagerModal = ({ isOpen, onClose }) => {
 
     setIsSubmitting(true);
     try {
-      // 1. Create user in Firebase Auth without signing out current admin
-      await adminCreateUser(cleanEmail, cleanPass);
+      // 1. Create user in Custom Backend without signing out current admin
+      const assigned = newAllMachines || newRole === 'admin' ? allAllowedNumbers : newSelectedMachines;
+      await adminCreateUser(cleanEmail, cleanPass, newRole, assigned);
 
-      // 2. Save role and machine assignment to Firebase Realtime Database
+      // 2. Save role and machine assignment in context & database
       await saveUserPermissions({
         email: cleanEmail,
         role: newRole,
         allMachines: newAllMachines || newRole === 'admin',
-        assignedMachines:
-          newAllMachines || newRole === 'admin' ? allAllowedNumbers : newSelectedMachines,
+        assignedMachines: assigned,
       });
 
       setFeedback({

@@ -79,6 +79,33 @@ const createMachine = async (req, res) => {
   }
 };
 
+// Update machine details (Admin only)
+// PUT /api/machines/:machineId
+const updateMachine = async (req, res) => {
+  try {
+    const { machineId } = req.params;
+    const { displayName, category, deviceId } = req.body;
+
+    const machine = await Machine.findById(machineId);
+    if (!machine) {
+      return res.status(404).json({ error: 'Machine not found' });
+    }
+
+    if (displayName) machine.displayName = displayName.trim();
+    if (category) machine.category = category.trim();
+    if (deviceId !== undefined) machine.deviceId = deviceId.trim();
+
+    await machine.save();
+
+    return res.status(200).json({
+      message: 'Machine updated successfully',
+      machine,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to update machine' });
+  }
+};
+
 // Delete a machine (Admin only)
 // DELETE /api/machines/:machineId
 const deleteMachine = async (req, res) => {
@@ -209,6 +236,7 @@ module.exports = {
   listMachines,
   getMachine,
   createMachine,
+  updateMachine,
   deleteMachine,
   updateCustomLabels,
   toggleMachineLogging,
