@@ -7,52 +7,74 @@ const { broadcastTelemetry, broadcastModbusCommand } = require('../sockets/socke
 const { canAccessMachine } = require('../middleware/auth');
 const { ROLES } = require('../config/constants');
 
-// Parse gateway payload flexibly
-const parseGatewayPayload = (rawBody) => {
+// Parse gateway payload flexibly (supports arrays, Firebase-style {"0":...} objects, and root machine nesting)
+const parseGatewayPayload = (rawBody, defaultMachineId = '') => {
+  let detectedMachineId = defaultMachineId;
   let deviceId = '';
   let timestamp = Date.now();
   let values = {};
 
-  const readNode = rawBody.read !== undefined && typeof rawBody.read === 'object'
-    ? rawBody.read
-    : rawBody;
+  if (!rawBody || typeof rawBody !== 'object') {
+    return { machineId: detectedMachineId, deviceId, timestamp, values };
+  }
 
-  // Case A: { "plc_device_...": [ { "ts": 123, "values": { ... } } ] }
-  if (typeof readNode === 'object' && readNode !== null) {
-    const keys = Object.keys(readNode);
+  let node = rawBody;
 
+  // 1. If payload is wrapped in machineId (e.g. { "MC_001": { "read": { ... } } })
+  const topKeys = Object.keys(node);
+  if (topKeys.length === 1 && !['read', 'values', 'write'].includes(topKeys[0]) && !topKeys[0].startsWith('plc_device')) {
+    if (!detectedMachineId || detectedMachineId === 'SAFC_M33') {
+      detectedMachineId = topKeys[0];
+    }
+    node = node[topKeys[0]];
+  }
+
+  // 2. Unroll "read" node if present
+  if (node && typeof node === 'object' && node.read !== undefined && typeof node.read === 'object') {
+    node = node.read;
+  }
+
+  // 3. Find deviceId and telemetry values inside node
+  if (node && typeof node === 'object') {
+    const keys = Object.keys(node);
     if (keys.length > 0) {
-      const firstKey = keys[0];
+      const plcKey = keys.find(k => k.startsWith('plc_device')) || keys[0];
+      const records = node[plcKey];
 
-      // If key looks like plc_device_...
-      if (firstKey.startsWith('plc_device') || Array.isArray(readNode[firstKey])) {
-        deviceId = firstKey;
-        const records = readNode[firstKey];
-        const latest = Array.isArray(records) ? records[records.length - 1] : records;
+      if (records && (Array.isArray(records) || typeof records === 'object')) {
+        deviceId = plcKey;
+        // Supports both Array [ { ts, values } ] and Object { "0": { ts, values } }
+        const recordsList = Array.isArray(records) ? records : Object.values(records);
+        const latest = recordsList[recordsList.length - 1] || recordsList[0];
 
         if (latest && typeof latest === 'object') {
           timestamp = latest.ts || latest.timestamp || latest.time || Date.now();
           values = latest.values && typeof latest.values === 'object' ? latest.values : latest;
         }
-      }
-      // Case B: Direct dictionary { "bottle_count": 18332, "chiller": 164 }
-      else if (readNode.values && typeof readNode.values === 'object') {
-        timestamp = readNode.ts || readNode.timestamp || Date.now();
-        values = readNode.values;
+      } else if (node.values && typeof node.values === 'object') {
+        timestamp = node.ts || node.timestamp || Date.now();
+        values = node.values;
       } else {
-        values = readNode;
+        values = node;
       }
     }
   }
 
-  return { deviceId, timestamp: Number(timestamp) || Date.now(), values };
+  return {
+    machineId: detectedMachineId,
+    deviceId,
+    timestamp: Number(timestamp) || Date.now(),
+    values: values && typeof values === 'object' ? values : {},
+  };
 };
 
 // Ingestion Handler: POST /api/machines/:machineId/read (or /api/telemetry/ingest)
 const ingestTelemetry = async (req, res) => {
   try {
-    const machineId = (req.params.machineId || req.body.machineId || req.query.machineId || 'SAFC_M33').trim();
-    const { deviceId, timestamp, values } = parseGatewayPayload(req.body);
+    const routeMachineId = (req.params.machineId || req.body?.machineId || req.query?.machineId || '').trim();
+    const parsed = parseGatewayPayload(req.body, routeMachineId);
+    const machineId = (parsed.machineId || routeMachineId || 'SAFC_M33').trim();
+    const { deviceId, timestamp, values } = parsed;
 
     if (Object.keys(values).length === 0) {
       return res.status(400).json({ error: 'No telemetry values found in payload' });
