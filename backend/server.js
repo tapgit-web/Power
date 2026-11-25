@@ -20,11 +20,34 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Health Check & Root
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  const mongoose = require('mongoose');
+  const readyState = mongoose.connection.readyState;
+  const dbName = mongoose.connection.name;
+  let machineCount = 0;
+  let machineIds = [];
+  try {
+    if (readyState === 1) {
+      const Machine = require('./models/Machine');
+      const machines = await Machine.find({}, '_id machineId');
+      machineCount = machines.length;
+      machineIds = machines.map(m => m.machineId || m._id);
+    }
+  } catch (e) {
+    console.error('Health check DB query error:', e.message);
+  }
+
   res.status(200).json({
     status: 'online',
     timestamp: new Date().toISOString(),
     service: 'Power Monitoring & Control Backend',
+    database: {
+      connected: readyState === 1,
+      readyState,
+      dbName,
+      machineCount,
+      machineIds,
+    },
   });
 });
 
