@@ -17,7 +17,8 @@ const io = initializeSockets(server);
 // Middleware
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.text({ limit: '10mb', type: ['text/plain', 'text/*', 'application/octet-stream'] }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Real-Time Request Logger for Render Logs Console
 app.use((req, res, next) => {
