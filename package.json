@@ -4,6 +4,8 @@
   "private": true,
   "description": "Full-stack IoT Power & PLC Monitoring System (Frontend + Backend)",
   "scripts": {
+    "start": "npm start --prefix backend",
+    "build": "npm install --prefix backend",
     "start:frontend": "npm start --prefix frontend",
     "start:backend": "npm start --prefix backend",
     "dev:backend": "npm run dev --prefix backend",
