@@ -22,6 +22,8 @@ router.all('/machines/:machineId/read', handleIngest);
 router.all('/machines/:machineId/read.json', handleIngest);
 router.all('/:machineId/read.json', handleIngest);
 router.all('/:machineId/read', handleIngest);
+router.all('/read.json', handleIngest);
+router.all('/read', handleIngest);
 router.post('/telemetry/ingest', ingestTelemetry);
 
 // Modbus Control: Gateway polling for pending writes

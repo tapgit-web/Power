@@ -23,7 +23,7 @@ const parseGatewayPayload = (rawBody, defaultMachineId = '') => {
   // 1. If payload is wrapped in machineId (e.g. { "MC_001": { "read": { ... } } })
   const topKeys = Object.keys(node);
   if (topKeys.length === 1 && !['read', 'values', 'write'].includes(topKeys[0]) && !topKeys[0].startsWith('plc_device')) {
-    if (!detectedMachineId || detectedMachineId === 'SAFC_M33') {
+    if (!detectedMachineId || detectedMachineId === 'SAFC_M33' || detectedMachineId === 'machines') {
       detectedMachineId = topKeys[0];
     }
     node = node[topKeys[0]];
@@ -71,7 +71,10 @@ const parseGatewayPayload = (rawBody, defaultMachineId = '') => {
 // Ingestion Handler: POST /api/machines/:machineId/read (or /api/telemetry/ingest)
 const ingestTelemetry = async (req, res) => {
   try {
-    const routeMachineId = (req.params.machineId || req.body?.machineId || req.query?.machineId || '').trim();
+    let routeMachineId = (req.params.machineId || req.body?.machineId || req.query?.machineId || '').trim();
+    if (routeMachineId === 'machines' || routeMachineId === 'read') {
+      routeMachineId = '';
+    }
     const parsed = parseGatewayPayload(req.body, routeMachineId);
     const machineId = (parsed.machineId || routeMachineId || 'SAFC_M33').trim();
     const { deviceId, timestamp, values } = parsed;
