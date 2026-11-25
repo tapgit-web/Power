@@ -80,6 +80,7 @@ const ingestTelemetry = async (req, res) => {
     const { deviceId, timestamp, values } = parsed;
 
     if (Object.keys(values).length === 0) {
+      console.warn(`⚠️ [Telemetry Ingestion] Received request on "${req.originalUrl}" but 0 register values found! Body preview:`, JSON.stringify(req.body).slice(0, 300));
       return res.status(400).json({ error: 'No telemetry values found in payload' });
     }
 
@@ -91,7 +92,9 @@ const ingestTelemetry = async (req, res) => {
       receivedAt: Date.now(),
     };
 
-    console.log(`📥 [Telemetry] Packet received for "${machineId}" | Registers: ${Object.keys(values).length} | Device: ${deviceId || 'N/A'}`);
+    const registerKeys = Object.keys(values);
+    const samplePreview = registerKeys.slice(0, 6).map(k => `${k}: ${values[k]}`).join(', ');
+    console.log(`📥 [TELEMETRY INGESTION] Machine: "${machineId}" | Device: "${deviceId || 'N/A'}" | ${registerKeys.length} registers (${samplePreview}${registerKeys.length > 6 ? '...' : ''})`);
 
     // 1. Broadcast to Web & Flutter dashboards immediately
     broadcastTelemetry(machineId, payload);

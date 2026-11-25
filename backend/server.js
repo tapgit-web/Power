@@ -19,6 +19,20 @@ app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Real-Time Request Logger for Render Logs Console
+app.use((req, res, next) => {
+  // Skip noisy socket.io heartbeats
+  if (req.originalUrl.startsWith('/socket.io')) return next();
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const isGateway = req.originalUrl.includes('read') || req.originalUrl.includes('telemetry');
+    const badge = isGateway ? '⚡ [IOT GATEWAY]' : '🌐 [HTTP]';
+    console.log(`${badge} ${req.method} ${req.originalUrl} | Status: ${res.statusCode} (${duration}ms)`);
+  });
+  next();
+});
+
 // Health Check & Root
 app.get('/api/health', async (req, res) => {
   const mongoose = require('mongoose');
