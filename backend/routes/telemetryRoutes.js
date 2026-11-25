@@ -9,8 +9,19 @@ const {
 } = require('../controllers/telemetryController');
 const { requireAuth } = require('../middleware/auth');
 
-// Hardware Ingestion Endpoints (Open to Gateway or protected by shared secret)
-router.post('/machines/:machineId/read', ingestTelemetry);
+// Hardware Ingestion Endpoints (Open to Gateway)
+// Supports standard REST, Firebase RTDB-style .json suffix, and POST/PUT/PATCH methods
+const handleIngest = (req, res, next) => {
+  if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    return ingestTelemetry(req, res);
+  }
+  next();
+};
+
+router.all('/machines/:machineId/read', handleIngest);
+router.all('/machines/:machineId/read.json', handleIngest);
+router.all('/:machineId/read.json', handleIngest);
+router.all('/:machineId/read', handleIngest);
 router.post('/telemetry/ingest', ingestTelemetry);
 
 // Modbus Control: Gateway polling for pending writes

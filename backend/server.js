@@ -33,6 +33,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/admin/users', require('./routes/userRoutes'));
 app.use('/api', require('./routes/telemetryRoutes'));
 app.use('/api/machines', require('./routes/machineRoutes'));
+app.use('/', require('./routes/telemetryRoutes')); // Backwards compatibility for root /:machineId/read.json
 
 // 404 Handler
 app.use((req, res) => {
