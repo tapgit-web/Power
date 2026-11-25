@@ -80,6 +80,13 @@ app.use((req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && (err.status === 400 || err.statusCode === 400)) {
+    return res.status(400).json({
+      error: 'Malformed JSON payload',
+      message: err.message,
+      suggestion: 'Check that your request body starts with "{" and ends with "}", with no missing braces or extra quotes.'
+    });
+  }
   console.error('Unhandled Server Error:', err);
   res.status(500).json({ error: 'Internal Server Error', message: err.message });
 });
