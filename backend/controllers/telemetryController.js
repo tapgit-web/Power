@@ -105,7 +105,9 @@ const ingestTelemetry = async (req, res) => {
           _id: machineId,
           machineId,
           displayName: machineId,
+          category: 'power_meters',
           deviceId,
+          isActive: true,
           isLoggingEnabled: false,
           loggingIntervalSec: 60,
         });

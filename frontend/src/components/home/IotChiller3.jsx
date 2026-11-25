@@ -1116,9 +1116,10 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
   const filteredMachineKeys = machineKeys.filter((machine) => {
     const machineNumber = parseInt(machine.replace(/^(MC_|MC|M_|M)/i, "").trim(), 10);
     const rawName =
-      machineNames[String(machineNumber)] ||
-      machineNames[machineNumber] ||
-      `Machine ${machineNumber}`;
+      machineNames[machine] ||
+      (!isNaN(machineNumber) && machineNames[String(machineNumber)]) ||
+      (!isNaN(machineNumber) && machineNames[machineNumber]) ||
+      machine;
     const displayName = rawName ? (rawName.startsWith("-") ? rawName : ` - ${rawName}`) : "";
     const fullName = `${machine}${displayName}`.toLowerCase();
     const query = (searchQuery || "").toLowerCase().trim();
@@ -1127,9 +1128,9 @@ export const Iot_chiller = ({ searchQuery = "" }) => {
     return (
       fullName.includes(query) ||
       machine.toLowerCase().includes(query) ||
-      `m${String(machineNumber).padStart(3, "0")}`.includes(query) ||
-      `mc_${String(machineNumber).padStart(3, "0")}`.includes(query) ||
-      String(machineNumber).includes(query)
+      (!isNaN(machineNumber) && `m${String(machineNumber).padStart(3, "0")}`.includes(query)) ||
+      (!isNaN(machineNumber) && `mc_${String(machineNumber).padStart(3, "0")}`.includes(query)) ||
+      (!isNaN(machineNumber) && String(machineNumber).includes(query))
     );
   });
 

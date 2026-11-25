@@ -325,28 +325,40 @@ export const MachineConfigProvider = ({ children }) => {
 
   // Fast getter for consumption by dashboard components
   const getCategoryConfig = (categoryKey = 'power_meters') => {
-    const cat =
-      machinesConfig[categoryKey] ||
-      Object.values(machinesConfig)[0] ||
-      DEFAULT_MACHINES_CONFIG.power_meters;
+    // Collect all machines, names, addresses, and customLabels across all categories
+    const allNames = {};
+    const allAddresses = {};
+    const allCustomLabels = {};
+    const allAllowed = [];
 
-    const baseAllowed = cat?.allowed || [];
+    Object.values(machinesConfig || {}).forEach((c) => {
+      if (c && typeof c === 'object') {
+        if (Array.isArray(c.allowed)) {
+          c.allowed.forEach((num) => {
+            if (!allAllowed.includes(num)) allAllowed.push(num);
+          });
+        }
+        Object.assign(allNames, c.names || {});
+        Object.assign(allAddresses, c.addresses || {});
+        Object.assign(allCustomLabels, c.customLabels || {});
+      }
+    });
 
     // Filter machines by assignedMachines if user is not admin
-    let effectiveAllowed = baseAllowed;
+    let effectiveAllowed = allAllowed;
     if (!isAdmin && Array.isArray(assignedMachines)) {
-      effectiveAllowed = baseAllowed.filter((num) =>
+      effectiveAllowed = allAllowed.filter((num) =>
         assignedMachines.includes(num) || assignedMachines.includes(String(num))
       );
     }
 
     return {
       allowedNumbers: effectiveAllowed,
-      allAllowedNumbers: baseAllowed,
-      machineNames: cat?.names || {},
-      machineAddresses: cat?.addresses || {},
-      machineCustomLabels: cat?.customLabels || {},
-      label: cat?.label || categoryKey,
+      allAllowedNumbers: allAllowed,
+      machineNames: allNames,
+      machineAddresses: allAddresses,
+      machineCustomLabels: allCustomLabels,
+      label: categoryKey,
       allTelemetryAddresses,
       allAddressKeys
     };
