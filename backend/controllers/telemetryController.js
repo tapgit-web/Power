@@ -66,6 +66,8 @@ const ingestTelemetry = async (req, res) => {
       receivedAt: Date.now(),
     };
 
+    console.log(`📥 [Telemetry] Packet received for "${machineId}" | Registers: ${Object.keys(values).length} | Device: ${deviceId || 'N/A'}`);
+
     // 1. Broadcast to Web & Flutter dashboards immediately
     broadcastTelemetry(machineId, payload);
 
