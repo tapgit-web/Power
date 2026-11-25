@@ -14,11 +14,28 @@ const parseGatewayPayload = (rawBody, defaultMachineId = '') => {
   let timestamp = Date.now();
   let values = {};
 
-  if (!rawBody || typeof rawBody !== 'object') {
+  if (!rawBody) {
     return { machineId: detectedMachineId, deviceId, timestamp, values };
   }
 
   let node = rawBody;
+
+  // Handle raw string payload
+  if (typeof node === 'string') {
+    try {
+      node = JSON.parse(node);
+    } catch (e) {}
+  }
+
+  // Handle Form URL Encoded body where raw JSON string was parsed as a dictionary key: { '{"read":...}': '' }
+  if (node && typeof node === 'object' && !Array.isArray(node)) {
+    const keys = Object.keys(node);
+    if (keys.length === 1 && typeof keys[0] === 'string' && keys[0].trim().startsWith('{')) {
+      try {
+        node = JSON.parse(keys[0]);
+      } catch (e) {}
+    }
+  }
 
   // 1. If payload is wrapped in machineId (e.g. { "MC_001": { "read": { ... } } })
   const topKeys = Object.keys(node);
