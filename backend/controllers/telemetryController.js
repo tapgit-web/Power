@@ -89,12 +89,26 @@ const parseGatewayPayload = (rawBody, defaultMachineId = '') => {
 const ingestTelemetry = async (req, res) => {
   try {
     let routeMachineId = (req.params.machineId || req.body?.machineId || req.query?.machineId || '').trim();
-    if (routeMachineId === 'machines' || routeMachineId === 'read') {
+    if (['machines', 'read', 'ap', 'api'].includes(routeMachineId)) {
       routeMachineId = '';
     }
     const parsed = parseGatewayPayload(req.body, routeMachineId);
-    const machineId = (parsed.machineId || routeMachineId || 'SAFC_M33').trim();
     const { deviceId, timestamp, values } = parsed;
+    let machineId = (parsed.machineId || routeMachineId || '').trim();
+
+    // Auto-resolve machineId by deviceId from database if not explicitly provided
+    if (!machineId && deviceId && mongoose.connection.readyState === 1) {
+      try {
+        const found = await Machine.findOne({ deviceId });
+        if (found) {
+          machineId = found.machineId || found._id;
+        }
+      } catch (e) {}
+    }
+
+    if (!machineId) {
+      machineId = 'TAP003';
+    }
 
     if (Object.keys(values).length === 0) {
       console.warn(`⚠️ [Telemetry Ingestion] Received request on "${req.originalUrl}" but 0 register values found! Body preview:`, JSON.stringify(req.body).slice(0, 300));
